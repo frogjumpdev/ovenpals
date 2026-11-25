@@ -152,8 +152,10 @@ struct HealthKitProvider: HealthDataProvider {
         return SleepNights.nights(asleep, calendar: calendar)
     }
 
-    /// Every workout started on each day. A workout an app recorded in pieces (WHOOP ends an activity
-    /// when the heart rate drops between sets) is joined back into one (`WorkoutJoiner`).
+    /// Every workout started on each day, each once (`WorkoutJoiner.workouts`): a workout an app
+    /// recorded in pieces (WHOOP ends an activity when the heart rate drops between sets) is joined
+    /// back into one, and the same workout written by two apps (WHOOP and the Watch, Strava…) is
+    /// kept once, WHOOP's record first.
     private func dailyWorkouts(from start: Date, to end: Date) async throws -> [Date: [WorkoutSession]] {
         let descriptor = HKSampleQueryDescriptor(
             predicates: [.workout(HKQuery.predicateForSamples(withStart: start, end: end))],
@@ -161,14 +163,16 @@ struct HealthKitProvider: HealthDataProvider {
         )
         let workouts = try await descriptor.result(for: store)
 
-        let pieces = workouts.map { workout in
-            TimedWorkout(source: workout.sourceRevision.source.bundleIdentifier,
-                         name: Self.shortName(workout.workoutActivityType),
-                         start: workout.startDate, end: workout.endDate,
-                         minutes: workout.duration / 60, distanceKm: Self.distanceKm(workout))
+        let recorded = workouts.map { workout in
+            let source = workout.sourceRevision.source
+            return TimedWorkout(source: source.bundleIdentifier,
+                                name: Self.shortName(workout.workoutActivityType),
+                                start: workout.startDate, end: workout.endDate,
+                                minutes: workout.duration / 60, distanceKm: Self.distanceKm(workout),
+                                isWhoop: "\(source.name) \(source.bundleIdentifier)".lowercased().contains("whoop"))
         }
         var result: [Date: [WorkoutSession]] = [:]
-        for workout in WorkoutJoiner.join(pieces) {
+        for workout in WorkoutJoiner.workouts(recorded) {
             result[calendar.startOfDay(for: workout.start), default: []].append(workout.session)
         }
         return result
@@ -238,7 +242,7 @@ struct HealthKitProvider: HealthDataProvider {
         case .baseball, .softball: "Baseball"
         case .rugby: "Rugby"
         case .hockey: "Hockey"
-        default: "Workout"
+        default: WorkoutSession.plainName
         }
     }
 }

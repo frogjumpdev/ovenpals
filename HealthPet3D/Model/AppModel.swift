@@ -359,7 +359,7 @@ final class AppModel {
             book.add(due.map { creditRecord($0, in: snapshots, auto: true, at: credits.autoBookTime(for: $0.day)) })
         }
         openCredits = credits.open(in: snapshots, now: now)
-        pending = openCredits.filter { !book.bookedIDs.contains($0.id) }
+        pending = openCredits.filter { !$0.isBooked(in: book.bookedIDs) }
         let booked = credits.booked(snapshots, pending: pending)
         bookedToday = booked.first { $0.day == todayStart }
 

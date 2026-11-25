@@ -22,6 +22,14 @@ final class ReplayTests: XCTestCase {
         return f.date(from: text)!
     }
 
+    private func at(_ text: String) -> Date {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = la
+        f.dateFormat = "yyyy-MM-dd HH:mm"
+        return f.date(from: text)!
+    }
+
     // MARK: - The week's export
 
     /// "2026-11-16 23:00" (LA, November = -0800) as the export writes it.
@@ -177,9 +185,10 @@ final class ReplayTests: XCTestCase {
         // 9,900 steps (Fri) or 19.3 minutes (Sat)
         XCTAssertEqual(week.days.map(\.countsAsWorkout), [true, true, false, true, false, false, false])
         XCTAssertEqual(week.progress.workouts, 3)
-        // the nap makes Tuesday on time, AutoSleep makes Wednesday on time; Thursday has no data
-        XCTAssertEqual(week.days.map(\.onTime), [true, true, true, nil, true, true, true])
-        XCTAssertEqual(week.progress.onTimeNights, 6)
+        // the nap doesn't make Tuesday on time (asleep 23:50); AutoSleep makes Wednesday on time;
+        // Thursday has no data
+        XCTAssertEqual(week.days.map(\.onTime), [true, false, true, nil, true, true, true])
+        XCTAssertEqual(week.progress.onTimeNights, 5)
         XCTAssertTrue(week.progress.isDisciplined)
         XCTAssertEqual(result.disciplinedWeeks, [day("2026-11-16")])
         XCTAssertEqual(result.monthlyAchievements, 0)
@@ -246,10 +255,11 @@ final class ReplayTests: XCTestCase {
     func testPetsGetDoubleExperienceInTheDisciplinedWeek() throws {
         let result = try XCTUnwrap(Replay.run(try HealthExport.read(xml: weekXML), settings: settings()))
         let experience = result.progress.filter { $0.value.isUnlocked }.mapValues(\.experience)
-        XCTAssertEqual(experience, [.running: 4, .yoga: 2, .mindfulness: 4, .onTimeSleep: 12, .earlyRise: 12])
+        // five on-time nights (Tuesday's nap no longer counts), doubled
+        XCTAssertEqual(experience, [.running: 4, .yoga: 2, .mindfulness: 4, .onTimeSleep: 10, .earlyRise: 12])
         XCTAssertEqual(result.progress[.onTimeSleep]?.level, 4)
-        // two bubbles for the one run on Monday (both apps wrote it), and the night's moon
-        XCTAssertEqual(result.days[0].credits.map(\.kind), [.workout, .workout, .night])
+        // one bubble for the one run on Monday (both apps wrote it), and the night's moon
+        XCTAssertEqual(result.days[0].credits.map(\.kind), [.workout, .night])
     }
 
     func testFlagsWhatIsWorthALook() throws {
@@ -264,7 +274,8 @@ final class ReplayTests: XCTestCase {
         let nap = try only(.eveningNap)
         XCTAssertEqual(nap.day, day("2026-11-17"))
         XCTAssertTrue(nap.matters)
-        XCTAssertTrue(nap.text.contains("19:00–19:40") && nap.text.contains("23:50"), nap.text)
+        XCTAssertTrue(nap.text.contains("19:00–19:40") && nap.text.contains("23:50") && nap.text.contains("现在是晚睡"), nap.text)
+        XCTAssertEqual(result.days[1].snapshot.sleepOnset, at("2026-11-16 23:50"))
 
         let source = try only(.otherSleepSource)
         XCTAssertEqual(source.day, day("2026-11-18"))
@@ -274,7 +285,10 @@ final class ReplayTests: XCTestCase {
         let twice = try only(.duplicateWorkout)
         XCTAssertEqual(twice.day, day("2026-11-16"))
         XCTAssertTrue(twice.matters)
-        XCTAssertTrue(twice.text.contains("Strava"), twice.text)
+        XCTAssertTrue(twice.text.contains("Strava") && twice.text.contains("只算一次"), twice.text)
+        // one run, one bubble: the Watch's 32 minutes (neither app is WHOOP, so the longer one)
+        XCTAssertEqual(result.days[0].workouts.map(\.session.shownMinutes), [32])
+        XCTAssertEqual(result.days[0].credits.filter { $0.kind == .workout }.map(\.key), ["workout:Run:32"])
 
         let short = try only(.almostTwentyMinutes)
         XCTAssertEqual(short.day, day("2026-11-21"))

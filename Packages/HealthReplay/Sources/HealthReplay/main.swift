@@ -219,9 +219,9 @@ if !result.nightsWithoutSleep.isEmpty {
 }
 
 let titles: [ReplayNote.Kind: String] = [
-    .eveningNap: "晚上的小睡被当成入睡时间",
+    .eveningNap: "入睡前的小睡（不算入睡时间）",
     .otherSleepSource: "入睡时间来自别的 App",
-    .duplicateWorkout: "同一次运动可能记了两次",
+    .duplicateWorkout: "几个 App 都记了的同一次运动（只算一次）",
     .almostTwentyMinutes: "差一点算 20 分钟的运动",
     .joinedWorkout: "分成几段记的运动（已合成一次）",
     .mindWorkout: "正念 / 太极类运动（算 Matcha，不算运动）",

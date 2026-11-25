@@ -216,30 +216,66 @@ final class DataScenarioTests: XCTestCase {
 
     // MARK: - Data that looks odd
 
-    /// The same run written into Apple Health twice (the watch and Strava, or Whoop's own Apple
-    /// Health export): the week and the pet count it once. (Two bubbles still grow: see the data
-    /// test report; telling the copies apart needs the start times HealthKitProvider has.)
+    /// The same run written into Apple Health twice (the Watch and WHOOP, or Strava): once as
+    /// `HealthKitProvider` hands it over (`WorkoutJoiner.workouts` keeps WHOOP's), so one bubble,
+    /// one workout for the week, one session for the pet.
     func testTheSameRunFromTwoAppsCountsOnce() {
-        let day = w.appleDay("2026-11-17", workouts: [WorkoutSession(name: "Run", minutes: 32.2),
-                                                      WorkoutSession(name: "Run", minutes: 31.8)])
+        let recorded = [
+            TimedWorkout(source: "com.apple.health.8A2E1C", name: "Run", start: w.at("2026-11-17 07:00"),
+                         end: w.at("2026-11-17 07:32:12"), minutes: 32.2, distanceKm: 5.1),
+            TimedWorkout(source: "com.whoop.iphone", name: "Run", start: w.at("2026-11-17 07:00:30"),
+                         end: w.at("2026-11-17 07:32:18"), minutes: 31.8),
+        ]
+        let day = w.appleDay("2026-11-17", workouts: WorkoutJoiner.workouts(recorded).map(\.session))
         let t = w.tracker()
+        XCTAssertEqual(day.allWorkouts.count, 1)
+        XCTAssertEqual(CreditRules(discipline: t).credits(on: day).map(\.key), ["workout:Run:32"])
         XCTAssertEqual(t.week(containing: day.day, snapshots: [day]).workouts, 1)
         let log = w.activities().log([day])
         let p = ActivityProgress.all(log: log, disciplinedWeeks: [], weekStart: t.weekStart(for:))
         XCTAssertEqual(p[.running]?.experience, 1)
     }
 
-    /// PRD v0.3 §7.2 as written: a night starts with its first stretch of sleep after 18:00. So a
-    /// short evening nap that a sleep app records (the Apple Watch itself doesn't track naps)
-    /// becomes the time of falling asleep, and a 02:00 night looks on time. Product question in the
-    /// data test report; this test pins the rule as it is today.
-    func testAnEveningNapAfterSixIsTakenAsFallingAsleep() {
-        let stretches = [DateInterval(start: w.at("2026-11-16 19:10"), end: w.at("2026-11-16 19:35"))]
-            + w.watchNight("2026-11-17 02:05", "2026-11-17 08:30")
+    /// A nap before the night isn't the time of falling asleep (decided 2026-11-25; PRD v0.3 §7.2
+    /// took the first sleep after 18:00). WHOOP records naps on its own: a 19:10 nap before a
+    /// 02:05 night no longer makes the night look on time.
+    func testAnEveningNapIsNotFallingAsleep() throws {
+        let nap = DateInterval(start: w.at("2026-11-16 19:10"), end: w.at("2026-11-16 19:35"))
+        let stretches = [nap] + w.watchNight("2026-11-17 02:05", "2026-11-17 08:30")
         let nights = SleepNights.nights(stretches, calendar: w.calendar)
+        let night = try XCTUnwrap(nights[w.day("2026-11-17")])
+        XCTAssertEqual(night.onset, w.at("2026-11-17 02:05"))
+        XCTAssertEqual(night.naps, [nap])
+        XCTAssertEqual(night.wake, w.at("2026-11-17 08:30"))
         let day = w.appleDay("2026-11-17", nights: nights)
-        XCTAssertEqual(day.sleepOnset, w.at("2026-11-16 19:10"))
-        XCTAssertEqual(w.tracker().isOnTimeNight(day), true)
+        XCTAssertEqual(w.tracker().isOnTimeNight(day), false)
+        // a nap 2 hours before the night is still a nap; one closer is part of the night
+        let twoHours = SleepNights.nights([DateInterval(start: w.at("2026-11-16 23:00"), end: w.at("2026-11-17 00:05"))]
+            + w.watchNight("2026-11-17 02:05", "2026-11-17 08:30"), calendar: w.calendar)
+        XCTAssertEqual(twoHours[w.day("2026-11-17")]?.onset, w.at("2026-11-17 02:05"))
+        let closer = SleepNights.nights([DateInterval(start: w.at("2026-11-16 23:00"), end: w.at("2026-11-17 00:06"))]
+            + w.watchNight("2026-11-17 02:05", "2026-11-17 08:30"), calendar: w.calendar)
+        XCTAssertEqual(closer[w.day("2026-11-17")]?.onset, w.at("2026-11-16 23:00"))
+    }
+
+    /// Waking up in the night doesn't move the time of falling asleep: an hour and a half awake
+    /// after a short first sleep, or a long first sleep however long the user was up after it.
+    func testAWakefulNightStartsWhenTheUserFirstFellAsleep() {
+        let t = w.tracker()
+        let awakeAnHourAndAHalf = SleepNights.nights(w.watchNight("2026-11-16 22:50", "2026-11-17 00:00")
+            + w.watchNight("2026-11-17 01:30", "2026-11-17 07:00"), calendar: w.calendar)
+        XCTAssertEqual(awakeAnHourAndAHalf[w.day("2026-11-17")]?.onset, w.at("2026-11-16 22:50"))
+        XCTAssertEqual(awakeAnHourAndAHalf[w.day("2026-11-17")]?.naps, [])
+        // 90 minutes asleep is no nap, even with three hours awake after it
+        let ninety = SleepNights.nights([DateInterval(start: w.at("2026-11-16 23:00"), end: w.at("2026-11-17 00:30"))]
+            + w.watchNight("2026-11-17 03:30", "2026-11-17 09:00"), calendar: w.calendar)
+        let day = w.appleDay("2026-11-17", nights: ninety)
+        XCTAssertEqual(day.sleepOnset, w.at("2026-11-16 23:00"))
+        XCTAssertEqual(t.isOnTimeNight(day), true)
+        // a short sleep with nothing after it is the night
+        let only = SleepNights.nights([DateInterval(start: w.at("2026-11-17 05:00"), end: w.at("2026-11-17 06:10"))],
+                                      calendar: w.calendar)
+        XCTAssertEqual(only[w.day("2026-11-17")]?.onset, w.at("2026-11-17 05:00"))
     }
 
     /// A Mind & Body or Tai Chi workout feeds Matcha (mindfulness), which PRD §5.1 lists as a habit,
