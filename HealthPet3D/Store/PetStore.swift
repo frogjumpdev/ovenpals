@@ -70,6 +70,35 @@ final class PetStore {
         sleepFixes = Self.decode([Date: Date].self, defaults.data(forKey: Keys.sleepFixes)) ?? [:]
     }
 
+    // MARK: - Time zone
+
+    /// Days are saved as the start of a local day. After the phone changes time zone (a flight), each
+    /// one is turned back into its calendar date in the new zone (PetCore `CalendarDay`), so a day
+    /// isn't logged twice and past 自律周 keep matching their days (levels never go down). Called
+    /// before every evaluation; it changes and saves something only when a day was saved elsewhere.
+    func adopt(_ calendar: Calendar = .current) {
+        let log = CalendarDay.rekey(activityLog, in: calendar) { $0.union($1) }
+        if log != activityLog {
+            activityLog = log
+            save(log, Keys.activityLog)
+        }
+        let weeks = CalendarDay.rekey(disciplinedWeeks, in: calendar)
+        if weeks != disciplinedWeeks {
+            disciplinedWeeks = weeks
+            save(weeks, Keys.disciplinedWeeks)
+        }
+        let leave = CalendarDay.rekey(leaveDays, in: calendar)
+        if leave != leaveDays {
+            leaveDays = leave
+            save(leave, Keys.leaveDays)
+        }
+        let fixes = CalendarDay.rekey(sleepFixes, in: calendar) { first, _ in first }
+        if fixes != sleepFixes {
+            sleepFixes = fixes
+            save(fixes, Keys.sleepFixes)
+        }
+    }
+
     // MARK: - Watch got it wrong
 
     /// A night's real time of falling asleep (nil takes the fix back).
@@ -158,7 +187,10 @@ final class PetStore {
                 changed = true
             }
         }
-        if let theirs = Self.decode(Set<Date>.self, cloud.data(forKey: Keys.disciplinedWeeks)), !theirs.isSubset(of: disciplinedWeeks) {
+        // days another iPhone saved in another time zone are read as their dates here
+        let calendar = Calendar.current
+        if let saved = Self.decode(Set<Date>.self, cloud.data(forKey: Keys.disciplinedWeeks)),
+           case let theirs = CalendarDay.rekey(saved, in: calendar), !theirs.isSubset(of: disciplinedWeeks) {
             disciplinedWeeks.formUnion(theirs)
             save(disciplinedWeeks, Keys.disciplinedWeeks, toCloud: false)
             changed = true
@@ -166,7 +198,7 @@ final class PetStore {
         if let names = Self.decode([Date: [String]].self, cloud.data(forKey: Keys.activityLog)) {
             var updated = activityLog
             for (day, list) in names {
-                updated[day, default: []].formUnion(list.compactMap(Activity.init(rawValue:)))
+                updated[CalendarDay.rekey(day, in: calendar), default: []].formUnion(list.compactMap(Activity.init(rawValue:)))
             }
             updated = updated.filter { !$0.value.isEmpty }
             if updated != activityLog {
@@ -175,7 +207,8 @@ final class PetStore {
                 changed = true
             }
         }
-        if let theirs = Self.decode(Set<Date>.self, cloud.data(forKey: Keys.leaveDays)), !theirs.isSubset(of: leaveDays) {
+        if let saved = Self.decode(Set<Date>.self, cloud.data(forKey: Keys.leaveDays)),
+           case let theirs = CalendarDay.rekey(saved, in: calendar), !theirs.isSubset(of: leaveDays) {
             leaveDays.formUnion(theirs)
             save(leaveDays, Keys.leaveDays, toCloud: false)
             changed = true

@@ -182,7 +182,7 @@ struct TodayScreen: View {
 
     private var workoutCard: some View {
         let workout = model.mainWorkout
-        let counts = (workout?.minutes ?? 0) >= model.discipline.rules.minWorkoutMinutes
+        let counts = workout.map { model.discipline.countsAsWorkout($0) } ?? false
         return VStack(alignment: .leading, spacing: 10) {
             CardTitle(icon: workoutIcon(workout?.name), title: workout?.name ?? "Workout") {
                 if counts { Tally(text: "Workout", color: Jade.accent, booked: model.mainWorkoutBooked) }

@@ -305,7 +305,17 @@ final class AppModel {
     /// `recentDays` as they count: with the nights the user fixed (「手表记错了」).
     @ObservationIgnored private(set) var countedDays: [HealthSnapshot] = []
 
-    private func evaluate(_ raw: [HealthSnapshot], now: Date, recordMemories: Bool) {
+    private func evaluate(_ read: [HealthSnapshot], now: Date, recordMemories: Bool) {
+        // After a flight, days saved in the old time zone count as their dates here (PetCore
+        // `CalendarDay`): nothing is logged or collected twice and past weeks keep their bonus.
+        let calendar = Calendar.current
+        store.adopt(calendar)
+        liveBook.adopt(calendar)
+        let raw = read.map { day -> HealthSnapshot in
+            var day = day
+            day.day = CalendarDay.rekey(day.day, in: calendar)
+            return day
+        }
         if recentDays.isEmpty { recentDays = raw }
         // 「手表记错了」: a night the user fixed counts with the time they gave (PRD v0.3 §4.2)
         let fixes = store.sleepFixes

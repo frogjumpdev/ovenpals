@@ -67,6 +67,19 @@ public struct CreditRecord: Codable, Sendable, Equatable, Identifiable {
     }
 }
 
+// MARK: - Another time zone
+
+extension CreditRecord {
+    /// The same line with its day (and the day in its id) as the start of that calendar date in
+    /// `calendar`, so a credit collected in another time zone isn't offered again (see `CalendarDay`).
+    public func rekeyed(in calendar: Calendar) -> CreditRecord {
+        var line = self
+        line.day = CalendarDay.rekey(day, in: calendar)
+        line.id = CalendarDay.rekeyID(id, in: calendar)
+        return line
+    }
+}
+
 // MARK: - The iCloud copy (PRD v0.3 §10.3 #19, App Review 5.1.3)
 
 extension CreditRecord {
@@ -151,9 +164,8 @@ public struct CreditRules: Sendable {
     public func workoutKeys(_ workouts: [WorkoutSession]) -> [String?] {
         var seen: [String: Int] = [:]
         return workouts.map { workout in
-            let activity = Activity(workoutName: workout.name)
-            guard activity != .mindfulness, workout.minutes >= discipline.rules.minWorkoutMinutes else { return nil }
-            let base = "workout:\(workout.name):\(Int(workout.minutes.rounded()))"
+            guard discipline.countsAsWorkout(workout) else { return nil }
+            let base = "workout:\(workout.name):\(workout.shownMinutes)"
             let n = seen[base, default: 0]
             seen[base] = n + 1
             return n == 0 ? base : "\(base)#\(n + 1)"

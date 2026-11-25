@@ -342,6 +342,32 @@ Whoop 跳回 `whoop-callback`（存好加密的 token，补拉 30 天）→ 网�
 - 数据超过 30 分钟没更新时，打开 App 会让服务器重新拉最近 3 天；Settings → Test build →「Refresh now」也可以。
 - 报错「The Ovenpals server answered with an error (500)」多半是 Supabase 里的 Whoop 密钥没设好。
 
+## 数据测试（2026-11-25）
+
+PetCore 里有两组按 PRD v0.3 写的数据测试，Linux 上也能跑（`cd Packages/PetCore && swift test`）：
+
+- `PRDv03BoundaryTests`：每条打卡规则的边界，差一分钟、一步、一个百分点各试一次（20 分钟、1 万步、目标 + 30 分钟、
+  18:00 分界、周一到周日、04:00 自动入账、L×(L+1)/2、自律周翻倍、蜂蜜罐 / 热牛奶 / 能量棒）。
+- `DataScenarioTests`：照 Apple 健康和 Whoop 真实送来的样子造的整周数据（睡眠分段、两个睡眠 App 叠在一起、
+  Whoop 和 Apple Watch 同时戴、夏令时、坐飞机换时区），从原始数据一路算到本周格子、泡泡、宠物经验和 Toast 等级。
+  `DataTestKit.swift` 里的 `AppRun` 按 `AppModel.evaluate` 的顺序算，改那边时这边要跟着改。
+
+- `CalendarDayTests`：换时区之后存下的日子还是原来那天（12 个时区两两互飞，夏令时那几天也试）。
+
+测出来的两个问题同日已修：
+
+- **换时区**：打卡记录、自律周、请假、「手表记错了」和入账编号都按「某天 0 点那一刻」存，飞到别的时区后同一天会被当成新的一天
+  （经验重复、Memories 重复「Collected for you」、旧自律周的翻倍对不上、等级可能下降）。现在每次计算前 `PetStore.adopt` /
+  `CreditBook.adopt` 把存下的日子换回它的日期（PetCore `CalendarDay`），iCloud 拿回来的也一样。适用于 UTC−10:59 到 UTC+13 之间存的日子
+  （夏威夷到新西兰夏令时）；现在所在时区存的日子任何时区都不变。航班前后靠近午夜的运动可能落到相邻的一天，这是按当地日期算的本来结果。
+- **正念不算运动**：Mind & Body、太极再长也只喂抹茶，不占本周运动格（`DisciplineTracker.countsAsWorkout`）；Today 卡片和日历小卡显示
+  能算数的那次运动。
+
+以后再发现还没修的问题，测试用 `knownIssue` 包着：问题还在时这条测试显示 skipped（原因写在里面），修好后它会失败、提醒把包装拿掉。
+
+用真实数据核对：`Packages/HealthReplay` 把「健康」App 导出的数据按同一套规则逐天回放，列出每周结果、宠物等级和数据里
+容易让 App 看起来算错的地方（用法见那里的 README）。
+
 ## 还没做
 
 - 真机上确认 Pets 格子和分享卡的装扮图拍得出来（见 Dress up 一节）；真机上听一遍声音、试一遍触感（见音效一节）。

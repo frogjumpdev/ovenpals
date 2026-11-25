@@ -97,6 +97,24 @@ final class CreditBook {
         }
     }
 
+    /// After a time zone change (a flight), each line's day, and the day in its id, is turned back into
+    /// its calendar date in the new zone (PetCore `CalendarDay`), so food already eaten isn't offered
+    /// or collected again. Called before every evaluation; it saves only when something changed.
+    func adopt(_ calendar: Calendar = .current) {
+        let rekeyed = records.map { $0.rekeyed(in: calendar) }
+        let start = CalendarDay.rekey(since, in: calendar)
+        guard rekeyed != records || start != since else { return }
+        if start != since {
+            since = start
+            defaults?.set(start, forKey: Keys.since)
+        }
+        if rekeyed != records {
+            records = rekeyed
+            bookedIDs = Set(records.map(\.id))
+            save()
+        }
+    }
+
     // MARK: - iCloud: the app's own check-in records only (PRD v0.3 §10.3 #19)
 
     /// Takes in the lines iCloud has that this phone doesn't (after a reinstall, or from another
@@ -106,12 +124,16 @@ final class CreditBook {
     func mergeFromCloud() -> Bool {
         guard let cloud else { return false }
         var changed = false
-        if let theirs = cloud.object(forKey: Keys.since) as? Date, theirs < since {
+        // lines another iPhone saved in another time zone are read as their dates here
+        let calendar = Calendar.current
+        if let saved = cloud.object(forKey: Keys.since) as? Date, case let theirs = CalendarDay.rekey(saved, in: calendar),
+           theirs < since {
             since = theirs
             defaults?.set(theirs, forKey: Keys.since)
             changed = true
         }
-        let theirs = cloud.data(forKey: Keys.records).flatMap { try? JSONDecoder().decode([CreditRecord].self, from: $0) } ?? []
+        let theirs = (cloud.data(forKey: Keys.records).flatMap { try? JSONDecoder().decode([CreditRecord].self, from: $0) } ?? [])
+            .map { $0.rekeyed(in: calendar) }
         let mine = Set(CreditRecord.bareIDs(records.map(\.id)))
         let new = zip(theirs, CreditRecord.bareIDs(theirs.map(\.id))).filter { !mine.contains($0.1) }.map { $0.0 }
         if !new.isEmpty {
