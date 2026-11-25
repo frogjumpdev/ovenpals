@@ -86,6 +86,8 @@ public struct ReplayNote: Sendable, Equatable {
         case duplicateWorkout
         /// A sport that reads "19 min": short of the 19:30 that shows (and counts) as 20.
         case almostTwentyMinutes
+        /// A workout recorded in pieces, joined back into one.
+        case joinedWorkout
         /// A Mind & Body / Tai Chi workout of 20+ minutes: Matcha only, not one of the week's workouts.
         case mindWorkout
         /// Steps close to 10,000.
@@ -153,7 +155,12 @@ public enum Replay {
             SleepNights.wakeDay(forSleepStartingAt: $0.interval.start, calendar: calendar)
         }
         let workouts = export.workouts.filter { $0.start >= first && $0.start < end }.sorted { $0.start < $1.start }
-        let workoutsByDay = Dictionary(grouping: workouts) { calendar.startOfDay(for: $0.start) }
+        // pieces of one workout joined back into one, as the app does (`WorkoutJoiner`)
+        let joined = WorkoutJoiner.join(workouts.map {
+            TimedWorkout(source: $0.source, name: shortName($0.activityType), start: $0.start, end: $0.end,
+                         minutes: $0.minutes, distanceKm: $0.distanceKm)
+        })
+        let workoutsByDay = Dictionary(grouping: joined) { calendar.startOfDay(for: $0.start) }
         let mindfulByDay = Dictionary(grouping: export.mindful.filter { $0.start >= first && $0.start < end }) {
             calendar.startOfDay(for: $0.start)
         }.mapValues { SleepNights.mergedDuration($0) / 60 }
@@ -163,10 +170,8 @@ public enum Replay {
         var days: [ReplayDay] = []
         for day in dayStarts {
             let dayWorkouts = (workoutsByDay[day] ?? []).map { workout in
-                let session = WorkoutSession(name: shortName(workout.activityType), minutes: workout.minutes,
-                                             distanceKm: workout.distanceKm)
-                return ReplayWorkout(source: workout.source, start: workout.start, end: workout.end, session: session,
-                                     counts: tracker.countsAsWorkout(session))
+                ReplayWorkout(source: workout.source, start: workout.start, end: workout.end, session: workout.session,
+                              counts: tracker.countsAsWorkout(workout.session))
             }
             let sessions = dayWorkouts.map(\.session)
             let longest = sessions.max { $0.minutes < $1.minutes }
@@ -317,6 +322,14 @@ public enum Replay {
                     kind: .almostTwentyMinutes, day: day.day, matters: !day.countsAsWorkout,
                     text: "\(format.workout(workout))显示「19 min」，不算运动；再多 \(seconds) 秒就按 20 分钟算"
                         + (day.countsAsWorkout ? "" : "；这天因此没有运动")))
+            }
+            if let pieces = workout.session.pieces, pieces.count > 1 {
+                let alone = pieces.contains { Double(Int($0.rounded())) >= DisciplineRules.standard.minWorkoutMinutes }
+                let list = pieces.map { String(Int($0.rounded())) }.joined(separator: "、")
+                notes.append(ReplayNote(
+                    kind: .joinedWorkout, day: day.day, matters: workout.counts && !alone,
+                    text: "\(pieces.count) 段 \(workout.session.name)（\(list) 分钟）合成一次，共 \(workout.session.shownMinutes) 分钟"
+                        + (workout.counts && !alone ? "；分开算的话一段都不够 20 分钟" : "")))
             }
             if activity == .mindfulness, minutes >= 20 {
                 notes.append(ReplayNote(kind: .mindWorkout, day: day.day, matters: false,

@@ -31,6 +31,7 @@ swift run -c release --package-path Packages/HealthReplay health-replay ~/Downlo
   - 晚上的小睡被当成入睡时间（18:00 以后的第一段睡眠）；
   - 入睡时间来自别的 App（比如 AutoSleep 比手表早记了一个小时）；
   - 同一次运动可能记了两次（手表和 Strava 各写一次，会长两个泡泡）；
+  - 分成几段记的运动（同一个 App、同一种运动、中间停不到 10 分钟，已和 App 一样合成一次）；
   - 差一点算 20 分钟的运动（运动按显示的整分钟算，19 分 30 秒以上显示「20 min」、也算数）；
   - 正念 / 太极类运动（只喂 Matcha，不算一周的运动）；
   - 步数离 1 万很近；

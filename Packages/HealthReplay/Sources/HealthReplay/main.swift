@@ -223,6 +223,7 @@ let titles: [ReplayNote.Kind: String] = [
     .otherSleepSource: "入睡时间来自别的 App",
     .duplicateWorkout: "同一次运动可能记了两次",
     .almostTwentyMinutes: "差一点算 20 分钟的运动",
+    .joinedWorkout: "分成几段记的运动（已合成一次）",
     .mindWorkout: "正念 / 太极类运动（算 Matcha，不算运动）",
     .stepsNearGoal: "步数离 1 万很近",
     .travel: "在别的时区记的数据",

@@ -152,7 +152,8 @@ struct HealthKitProvider: HealthDataProvider {
         return SleepNights.nights(asleep, calendar: calendar)
     }
 
-    /// Every workout started on each day.
+    /// Every workout started on each day. A workout an app recorded in pieces (WHOOP ends an activity
+    /// when the heart rate drops between sets) is joined back into one (`WorkoutJoiner`).
     private func dailyWorkouts(from start: Date, to end: Date) async throws -> [Date: [WorkoutSession]] {
         let descriptor = HKSampleQueryDescriptor(
             predicates: [.workout(HKQuery.predicateForSamples(withStart: start, end: end))],
@@ -160,12 +161,15 @@ struct HealthKitProvider: HealthDataProvider {
         )
         let workouts = try await descriptor.result(for: store)
 
+        let pieces = workouts.map { workout in
+            TimedWorkout(source: workout.sourceRevision.source.bundleIdentifier,
+                         name: Self.shortName(workout.workoutActivityType),
+                         start: workout.startDate, end: workout.endDate,
+                         minutes: workout.duration / 60, distanceKm: Self.distanceKm(workout))
+        }
         var result: [Date: [WorkoutSession]] = [:]
-        for workout in workouts {
-            let day = calendar.startOfDay(for: workout.startDate)
-            result[day, default: []].append(WorkoutSession(name: Self.shortName(workout.workoutActivityType),
-                                                           minutes: workout.duration / 60,
-                                                           distanceKm: Self.distanceKm(workout)))
+        for workout in WorkoutJoiner.join(pieces) {
+            result[calendar.startOfDay(for: workout.start), default: []].append(workout.session)
         }
         return result
     }
