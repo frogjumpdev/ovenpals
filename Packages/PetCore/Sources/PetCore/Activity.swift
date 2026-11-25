@@ -118,11 +118,15 @@ public struct WorkoutSession: Codable, Sendable, Equatable {
     public var minutes: Double
     /// Distance covered, for runs, walks, rides and swims (nil when the workout has none).
     public var distanceKm: Double?
+    /// The minutes of each piece, in order, when the workout was recorded in pieces and joined
+    /// (`WorkoutJoiner`); nil for a workout recorded in one go. `minutes` is their sum.
+    public var pieces: [Double]?
 
-    public init(name: String, minutes: Double, distanceKm: Double? = nil) {
+    public init(name: String, minutes: Double, distanceKm: Double? = nil, pieces: [Double]? = nil) {
         self.name = name
         self.minutes = minutes
         self.distanceKm = distanceKm
+        self.pieces = pieces
     }
 
     /// Whole minutes, as the app shows them ("Run 20 min") and as the rules count them: what reads

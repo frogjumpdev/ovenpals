@@ -160,16 +160,31 @@ public struct CreditRules: Sendable {
     }
 
     /// The credit key of each workout, nil for one that isn't a bubble (too short, mindfulness).
-    /// The same workout keeps its key as more of the day's data arrives.
+    /// The same workout keeps its key as more of the day's data arrives, a joined workout too: its
+    /// key has the minutes it had when it first counted, so a piece arriving later (WHOOP syncs
+    /// each piece when it ends) doesn't grow a second bubble for it.
     public func workoutKeys(_ workouts: [WorkoutSession]) -> [String?] {
         var seen: [String: Int] = [:]
         return workouts.map { workout in
             guard discipline.countsAsWorkout(workout) else { return nil }
-            let base = "workout:\(workout.name):\(workout.shownMinutes)"
+            let base = "workout:\(workout.name):\(keyMinutes(workout))"
             let n = seen[base, default: 0]
             seen[base] = n + 1
             return n == 0 ? base : "\(base)#\(n + 1)"
         }
+    }
+
+    /// The whole minutes of the first run of pieces that counted: the workout's own minutes when it
+    /// was recorded in one go.
+    private func keyMinutes(_ workout: WorkoutSession) -> Int {
+        guard let pieces = workout.pieces, pieces.count > 1 else { return workout.shownMinutes }
+        var total = 0.0
+        for piece in pieces {
+            total += piece
+            let shown = Int(total.rounded())
+            if Double(shown) >= discipline.rules.minWorkoutMinutes { return shown }
+        }
+        return workout.shownMinutes
     }
 
     // MARK: - Pending, booked, booked for you

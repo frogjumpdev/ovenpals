@@ -219,6 +219,30 @@ final class ReplayTests: XCTestCase {
         XCTAssertFalse(first.countsAsWorkout)
     }
 
+    func testAWorkoutRecordedInPiecesIsJoined() throws {
+        // WHOOP's strength session in four pieces, with breaks of 4, 7 and 8 minutes
+        var export = HealthExport()
+        let monday = day("2026-11-16"), minute: TimeInterval = 60
+        let pieces: [(start: Double, minutes: Double)] = [(20 * 60 + 11, 8.284), (20 * 60 + 24, 10.571),
+                                                           (20 * 60 + 41, 6.811), (20 * 60 + 56, 8.494)]
+        for piece in pieces {
+            let start = monday.addingTimeInterval(piece.start * minute)
+            export.workouts.append(.init(source: "WHOOP", activityType: "TraditionalStrengthTraining", start: start,
+                                         end: start.addingTimeInterval(piece.minutes * minute), minutes: piece.minutes))
+        }
+        var settings = ReplaySettings(timeZone: la, days: 1)
+        settings.lastDay = monday
+        let result = try XCTUnwrap(Replay.run(export, settings: settings))
+        let first = try XCTUnwrap(result.days.first { $0.day == monday })
+        XCTAssertEqual(first.workouts.count, 1)
+        XCTAssertEqual(first.workouts[0].session.shownMinutes, 34)
+        XCTAssertTrue(first.countsAsWorkout)
+        XCTAssertTrue(first.activities.contains(.strength))
+        let note = try XCTUnwrap(result.notes.first { $0.kind == .joinedWorkout })
+        XCTAssertTrue(note.matters)
+        XCTAssertTrue(note.text.contains("8、11、7、8") && note.text.contains("34"), note.text)
+    }
+
     func testPetsGetDoubleExperienceInTheDisciplinedWeek() throws {
         let result = try XCTUnwrap(Replay.run(try HealthExport.read(xml: weekXML), settings: settings()))
         let experience = result.progress.filter { $0.value.isUnlocked }.mapValues(\.experience)
