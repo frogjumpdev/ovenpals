@@ -121,12 +121,20 @@ public struct WorkoutSession: Codable, Sendable, Equatable {
     /// The minutes of each piece, in order, when the workout was recorded in pieces and joined
     /// (`WorkoutJoiner`); nil for a workout recorded in one go. `minutes` is their sum.
     public var pieces: [Double]?
+    /// The same workout as other apps wrote it into Apple Health, left out so it counts once
+    /// (`WorkoutJoiner.workouts`); nil when only one app recorded it.
+    public var copies: [WorkoutSession]?
 
-    public init(name: String, minutes: Double, distanceKm: Double? = nil, pieces: [Double]? = nil) {
+    /// What Apple Health calls a workout of no particular sport (WHOOP's unlabelled activities).
+    public static let plainName = "Workout"
+
+    public init(name: String, minutes: Double, distanceKm: Double? = nil, pieces: [Double]? = nil,
+                copies: [WorkoutSession]? = nil) {
         self.name = name
         self.minutes = minutes
         self.distanceKm = distanceKm
         self.pieces = pieces
+        self.copies = copies
     }
 
     /// Whole minutes, as the app shows them ("Run 20 min") and as the rules count them: what reads

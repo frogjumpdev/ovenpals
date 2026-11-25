@@ -45,6 +45,8 @@ public struct ReplayWorkout: Sendable, Equatable {
     public var session: WorkoutSession
     /// One of the week's workouts: a sport of 20+ minutes.
     public var counts: Bool
+    /// The same workout as other apps wrote it, left out (`WorkoutJoiner.workouts`).
+    public var copies: [ReplayWorkout] = []
 }
 
 /// One day as the app would see it on the morning after (everything collected at 04:00).
@@ -55,6 +57,8 @@ public struct ReplayDay: Sendable {
     public var workouts: [ReplayWorkout]
     /// Every app or device that wrote sleep for the night ending this morning.
     public var sleepSources: [String]
+    /// Naps before the night, left out of the time of falling asleep (`SleepNights.Night.naps`).
+    public var naps: [DateInterval]
     public var countsAsWorkout: Bool
     /// nil = no sleep data for the night ending this morning.
     public var onTime: Bool?
@@ -78,11 +82,11 @@ public struct ReplayWeek: Sendable {
 /// Something in the data worth a look: where the app's reading may not be what the user expects.
 public struct ReplayNote: Sendable, Equatable {
     public enum Kind: String, Sendable, CaseIterable {
-        /// A short sleep in the evening was taken as the time of falling asleep.
+        /// A nap before the night, left out of the time of falling asleep.
         case eveningNap
         /// The time of falling asleep came from another app than the one that recorded most of the night.
         case otherSleepSource
-        /// Two workouts at the same time: likely one workout written by two apps.
+        /// One workout written by two apps, counted once.
         case duplicateWorkout
         /// A sport that reads "19 min": short of the 19:30 that shows (and counts) as 20.
         case almostTwentyMinutes
@@ -155,8 +159,8 @@ public enum Replay {
             SleepNights.wakeDay(forSleepStartingAt: $0.interval.start, calendar: calendar)
         }
         let workouts = export.workouts.filter { $0.start >= first && $0.start < end }.sorted { $0.start < $1.start }
-        // pieces of one workout joined back into one, as the app does (`WorkoutJoiner`)
-        let joined = WorkoutJoiner.join(workouts.map {
+        // each workout once, as the app has it: pieces joined, copies from other apps left out
+        let joined = WorkoutJoiner.workouts(workouts.map {
             TimedWorkout(source: $0.source, name: shortName($0.activityType), start: $0.start, end: $0.end,
                          minutes: $0.minutes, distanceKm: $0.distanceKm)
         })
@@ -169,10 +173,11 @@ public enum Replay {
         let format = ReplayFormat(calendar: calendar)
         var days: [ReplayDay] = []
         for day in dayStarts {
-            let dayWorkouts = (workoutsByDay[day] ?? []).map { workout in
+            func replayed(_ workout: WorkoutJoiner.Joined) -> ReplayWorkout {
                 ReplayWorkout(source: workout.source, start: workout.start, end: workout.end, session: workout.session,
-                              counts: tracker.countsAsWorkout(workout.session))
+                              counts: tracker.countsAsWorkout(workout.session), copies: workout.copies.map(replayed))
             }
+            let dayWorkouts = (workoutsByDay[day] ?? []).map(replayed)
             let sessions = dayWorkouts.map(\.session)
             let longest = sessions.max { $0.minutes < $1.minutes }
             let night = nights[day]
@@ -185,6 +190,7 @@ public enum Replay {
                                       stepsBySource: (steps.bySource[day] ?? [:]).mapValues { Int($0) },
                                       workouts: dayWorkouts,
                                       sleepSources: Set((sleepByNight[day] ?? []).map(\.source)).sorted(),
+                                      naps: night?.naps ?? [],
                                       countsAsWorkout: tracker.countsAsWorkout(snapshot),
                                       onTime: tracker.isOnTimeNight(snapshot),
                                       latestOnTime: latest,
@@ -254,37 +260,23 @@ public enum Replay {
 
     // MARK: - Notes
 
-    /// Sleep stretches more than this far apart are two sleeps.
-    static let sleepGap: TimeInterval = 60 * 60
-    /// A first sleep this short, followed by a gap, is an evening nap.
-    static let napLength: TimeInterval = 90 * 60
-
     static func sleepNotes(_ day: ReplayDay, stretches: [HealthExport.Sleep], format: ReplayFormat) -> [ReplayNote] {
         guard let onset = day.snapshot.sleepOnset, !stretches.isEmpty else { return [] }
         var notes: [ReplayNote] = []
         let onTime: (Date) -> Bool = { $0 <= day.latestOnTime }
 
-        // a short sleep in the evening, then a long gap, then the night
-        var clusters: [DateInterval] = []
-        for stretch in stretches.map(\.interval).sorted(by: { $0.start < $1.start }) {
-            if let last = clusters.last, stretch.start.timeIntervalSince(last.end) < sleepGap {
-                clusters[clusters.count - 1] = DateInterval(start: last.start, end: max(last.end, stretch.end))
-            } else {
-                clusters.append(stretch)
-            }
-        }
-        if clusters.count >= 2, clusters[0].duration <= napLength {
-            let nap = clusters[0], main = clusters[1]
-            let changes = onTime(nap.start) != onTime(main.start)
+        // a nap before the night: not the time of falling asleep (PRD v0.3 §7.2 as written took it)
+        for nap in day.naps {
+            let changes = onTime(nap.start) != onTime(onset)
             notes.append(ReplayNote(
                 kind: .eveningNap, day: day.day, matters: changes,
-                text: "\(format.time(nap.start))–\(format.time(nap.end)) 的小睡被当成入睡时间，之后 \(format.time(main.start)) 才睡下"
-                    + (changes ? "；按小睡算\(onTime(nap.start) ? "准时" : "晚睡")，按正式入睡算\(onTime(main.start) ? "准时" : "晚睡")" : "；准不准时结果一样")))
+                text: "\(format.time(nap.start))–\(format.time(nap.end)) 的小睡不算入睡时间，入睡按 \(format.time(onset)) 算"
+                    + (changes ? "；按小睡算会是\(onTime(nap.start) ? "准时" : "晚睡")，现在是\(onTime(onset) ? "准时" : "晚睡")" : "；准不准时结果一样")))
         }
 
         // the time of falling asleep came from an app that didn't record most of the night
         let bySource = Dictionary(grouping: stretches, by: \.source)
-        if bySource.count > 1, let first = stretches.min(by: { $0.interval.start < $1.interval.start }),
+        if bySource.count > 1, let first = stretches.first(where: { $0.interval.start == onset }),
            let main = bySource.max(by: { SleepNights.mergedDuration($0.value.map(\.interval)) < SleepNights.mergedDuration($1.value.map(\.interval)) }),
            first.source != main.key, let mainOnset = main.value.map(\.interval.start).min(),
            mainOnset.timeIntervalSince(onset) > 10 * 60 {
@@ -300,17 +292,13 @@ public enum Replay {
     static func workoutNotes(_ day: ReplayDay, format: ReplayFormat) -> [ReplayNote] {
         var notes: [ReplayNote] = []
         let workouts = day.workouts
-        for (i, a) in workouts.enumerated() {
-            for b in workouts[(i + 1)...] {
-                let overlap = min(a.end, b.end).timeIntervalSince(max(a.start, b.start))
-                let shorter = min(a.end.timeIntervalSince(a.start), b.end.timeIntervalSince(b.start))
-                guard shorter > 0, overlap >= shorter / 2 else { continue }
-                let both = a.counts && b.counts
-                notes.append(ReplayNote(
-                    kind: .duplicateWorkout, day: day.day, matters: both,
-                    text: "可能是同一次运动记了两次：「\(a.source)」\(format.workout(a))和「\(b.source)」\(format.workout(b))"
-                        + (both ? "；两次都会长泡泡、记两行账（一周的运动次数和宠物经验不受影响）" : "")))
-            }
+        for workout in workouts where !workout.copies.isEmpty {
+            let copies = workout.copies.map { "「\($0.source)」\(format.workout($0))" }.joined(separator: "、")
+            let twice = workout.counts && workout.copies.contains(where: \.counts)
+            notes.append(ReplayNote(
+                kind: .duplicateWorkout, day: day.day, matters: twice,
+                text: "「\(workout.source)」\(format.workout(workout))和\(copies)是同一次运动，只算一次，按「\(workout.source)」的算"
+                    + (twice ? "；只长一个泡泡、记一行账" : "")))
         }
         for workout in workouts {
             let minutes = workout.session.minutes

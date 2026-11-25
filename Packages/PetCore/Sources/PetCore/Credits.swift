@@ -25,15 +25,24 @@ public struct Credit: Sendable, Equatable, Identifiable {
     public var key: String
     /// The workout, for workout credits.
     public var workout: WorkoutSession?
+    /// Keys the same food had before another app's copy of the workout arrived and was kept
+    /// instead (`WorkoutSession.copies`): eaten under one of them, it isn't offered again.
+    public var aliases: [String]
 
-    public init(day: Date, kind: CreditKind, key: String, workout: WorkoutSession? = nil) {
+    public init(day: Date, kind: CreditKind, key: String, workout: WorkoutSession? = nil, aliases: [String] = []) {
         self.day = day
         self.kind = kind
         self.key = key
         self.workout = workout
+        self.aliases = aliases
     }
 
     public var id: String { "\(Int(day.timeIntervalSince1970))/\(key)" }
+
+    /// Booked under its id or under one of its aliases.
+    public func isBooked(in booked: Set<String>) -> Bool {
+        booked.contains(id) || aliases.contains { booked.contains("\(Int(day.timeIntervalSince1970))/\($0)") }
+    }
 }
 
 /// A booked credit, as the Memories ledger lists it.
@@ -145,7 +154,8 @@ public struct CreditRules: Sendable {
         var result: [Credit] = []
         let workouts = day.allWorkouts
         for (workout, key) in zip(workouts, workoutKeys(workouts)) {
-            if let key { result.append(Credit(day: day.day, kind: .workout, key: key, workout: workout)) }
+            guard let key else { continue }
+            result.append(Credit(day: day.day, kind: .workout, key: key, workout: workout, aliases: aliasKeys(workout, key: key)))
         }
         if (day.steps ?? 0) >= discipline.rules.activeDaySteps {
             result.append(Credit(day: day.day, kind: .steps, key: "steps"))
@@ -172,6 +182,17 @@ public struct CreditRules: Sendable {
             seen[base] = n + 1
             return n == 0 ? base : "\(base)#\(n + 1)"
         }
+    }
+
+    /// The keys the workout's copies from other apps would have had on their own (the ones that
+    /// were a bubble), so one eaten before the copy that is kept arrived isn't offered again.
+    private func aliasKeys(_ workout: WorkoutSession, key: String) -> [String] {
+        var result: [String] = []
+        for copy in workout.copies ?? [] where discipline.countsAsWorkout(copy) {
+            let alias = "workout:\(copy.name):\(keyMinutes(copy))"
+            if alias != key, !result.contains(alias) { result.append(alias) }
+        }
+        return result
     }
 
     /// The whole minutes of the first run of pieces that counted: the workout's own minutes when it
@@ -205,7 +226,7 @@ public struct CreditRules: Sendable {
 
     /// Credits still waiting for a tap: not booked, and before their 04:00.
     public func pending(in snapshots: [HealthSnapshot], booked: Set<String>, now: Date) -> [Credit] {
-        open(in: snapshots, now: now).filter { !booked.contains($0.id) }
+        open(in: snapshots, now: now).filter { !$0.isBooked(in: booked) }
     }
 
     /// Credits whose 04:00 has passed without a tap, from `since` on (earlier days count as booked
@@ -215,7 +236,7 @@ public struct CreditRules: Sendable {
         return snapshots.filter { $0.day >= first && now >= autoBookTime(for: $0.day) }
             .sorted { $0.day < $1.day }
             .flatMap(credits(on:))
-            .filter { !booked.contains($0.id) }
+            .filter { !$0.isBooked(in: booked) }
     }
 
     /// The day as it counts so far: whatever is still pending is taken out (a pending workout is

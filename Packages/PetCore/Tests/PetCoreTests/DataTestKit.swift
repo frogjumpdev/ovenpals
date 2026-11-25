@@ -131,7 +131,7 @@ struct AppRun {
         let due = rules.due(in: days, booked: bookedIDs, now: now, since: since)
         autoBooked += due
         bookedIDs.formUnion(due.map(\.id))
-        pending = rules.open(in: days, now: now).filter { !bookedIDs.contains($0.id) }
+        pending = rules.open(in: days, now: now).filter { !$0.isBooked(in: bookedIDs) }
         let booked = rules.booked(days, pending: pending)
 
         week = tracker.week(containing: now, snapshots: booked, leaveDays: leaveDays)
