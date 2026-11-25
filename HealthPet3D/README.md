@@ -342,6 +342,19 @@ Whoop 跳回 `whoop-callback`（存好加密的 token，补拉 30 天）→ 网�
 - 数据超过 30 分钟没更新时，打开 App 会让服务器重新拉最近 3 天；Settings → Test build →「Refresh now」也可以。
 - 报错「The Ovenpals server answered with an error (500)」多半是 Supabase 里的 Whoop 密钥没设好。
 
+## 数据测试（2026-11-25）
+
+PetCore 里有两组按 PRD v0.3 写的数据测试，Linux 上也能跑（`cd Packages/PetCore && swift test`）：
+
+- `PRDv03BoundaryTests`：每条打卡规则的边界，差一分钟、一步、一个百分点各试一次（20 分钟、1 万步、目标 + 30 分钟、
+  18:00 分界、周一到周日、04:00 自动入账、L×(L+1)/2、自律周翻倍、蜂蜜罐 / 热牛奶 / 能量棒）。
+- `DataScenarioTests`：照 Apple 健康和 Whoop 真实送来的样子造的整周数据（睡眠分段、两个睡眠 App 叠在一起、
+  Whoop 和 Apple Watch 同时戴、夏令时、坐飞机换时区），从原始数据一路算到本周格子、泡泡、宠物经验和 Toast 等级。
+  `DataTestKit.swift` 里的 `AppRun` 按 `AppModel.evaluate` 的顺序算，改那边时这边要跟着改。
+
+发现了还没修的问题，测试用 `knownIssue` 包着：问题还在时这条测试显示 skipped（原因写在里面），修好后它会失败、提醒把包装拿掉。
+跑完看 skipped 的那几条就是现在的问题清单。
+
 ## 还没做
 
 - 真机上确认 Pets 格子和分享卡的装扮图拍得出来（见 Dress up 一节）；真机上听一遍声音、试一遍触感（见音效一节）。
