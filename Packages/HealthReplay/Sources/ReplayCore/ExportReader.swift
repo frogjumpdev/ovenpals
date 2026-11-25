@@ -50,7 +50,7 @@ public struct HealthExport: Sendable {
         var file = url
         var isFolder: ObjCBool = false
         if FileManager.default.fileExists(atPath: url.path, isDirectory: &isFolder), isFolder.boolValue {
-            file = url.appendingPathComponent("export.xml")
+            file = mainFile(in: url)
         }
         guard FileManager.default.isReadableFile(atPath: file.path), let handle = try? FileHandle(forReadingFrom: file) else {
             throw ReadError.cannotOpen(file.path)
@@ -66,6 +66,17 @@ public struct HealthExport: Sendable {
             return try stream(stripped)
         }
         return try stream(file)
+    }
+
+    /// The export in an `apple_health_export` folder. Its name follows the phone's language
+    /// (export.xml, 导出.xml…), so it is the largest XML file that isn't the clinical export_cda.xml.
+    static func mainFile(in folder: URL) -> URL {
+        let english = folder.appendingPathComponent("export.xml")
+        if FileManager.default.fileExists(atPath: english.path) { return english }
+        let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.fileSizeKey])) ?? []
+        let candidates = files.filter { $0.pathExtension.lowercased() == "xml" && !$0.lastPathComponent.lowercased().contains("cda") }
+        let size: (URL) -> Int = { (try? $0.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0 }
+        return candidates.max { size($0) < size($1) } ?? english
     }
 
     /// The DTD is in the first part of the file.
@@ -129,7 +140,7 @@ public struct HealthExport: Sendable {
 
         public var description: String {
             switch self {
-            case .cannotOpen(let path): "Can't open \(path). Give the export.xml inside the unzipped apple_health_export folder."
+            case .cannotOpen(let path): "Can't open \(path). Give the unzipped apple_health_export folder, or the export.xml (导出.xml) in it."
             case .invalid(let reason): "export.xml couldn't be read: \(reason)"
             }
         }

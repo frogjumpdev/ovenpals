@@ -6,7 +6,7 @@ import ReplayCore
 //   swift run --package-path Packages/HealthReplay health-replay ~/Desktop/apple_health_export --bed 23:30
 
 let usage = """
-用法：health-replay <export.xml 或 apple_health_export 文件夹> [选项]
+用法：health-replay <apple_health_export 文件夹，或其中的 export.xml / 导出.xml> [选项]
 
   --tz Asia/Shanghai     按哪个时区算（默认：这台电脑的时区）
   --bed 23:00            入睡目标（App 设置里的时间；晚 30 分钟内睡着算准时）

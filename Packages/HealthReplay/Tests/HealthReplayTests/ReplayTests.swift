@@ -150,6 +150,18 @@ final class ReplayTests: XCTestCase {
         XCTAssertThrowsError(try HealthExport.read(folder.appendingPathComponent("nothing.xml")))
     }
 
+    func testFindsTheExportUnderItsChineseName() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("apple_health_export-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        // a phone set to Chinese names it 导出.xml; export_cda.xml is the clinical copy
+        try weekXML.write(to: folder.appendingPathComponent("导出.xml"), atomically: true, encoding: .utf8)
+        try String(repeating: "<!-- clinical -->", count: 10_000).write(to: folder.appendingPathComponent("export_cda.xml"),
+                                                                          atomically: true, encoding: .utf8)
+        XCTAssertEqual(HealthExport.mainFile(in: folder).lastPathComponent, "导出.xml")
+        XCTAssertEqual(try HealthExport.read(folder).workouts.count, 5)
+    }
+
     // MARK: - Replaying
 
     func testTheWeekCountsAsTheAppCountsIt() throws {
