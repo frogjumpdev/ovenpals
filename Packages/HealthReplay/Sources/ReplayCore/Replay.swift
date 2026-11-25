@@ -84,11 +84,11 @@ public struct ReplayNote: Sendable, Equatable {
         case otherSleepSource
         /// Two workouts at the same time: likely one workout written by two apps.
         case duplicateWorkout
-        /// A sport just under 20 minutes.
+        /// A sport that reads "19 min": short of the 19:30 that shows (and counts) as 20.
         case almostTwentyMinutes
         /// A Mind & Body / Tai Chi workout of 20+ minutes: Matcha only, not one of the week's workouts.
         case mindWorkout
-        /// Steps close to 10,000, where the estimate of Apple Health's own total matters.
+        /// Steps close to 10,000.
         case stepsNearGoal
         /// Data recorded in another time zone.
         case travel
@@ -171,7 +171,7 @@ public enum Replay {
             let sessions = dayWorkouts.map(\.session)
             let longest = sessions.max { $0.minutes < $1.minutes }
             let night = nights[day]
-            let snapshot = HealthSnapshot(day: day, source: .healthKit, steps: steps.merged[day].map { Int($0) },
+            let snapshot = HealthSnapshot(day: day, source: .healthKit, steps: steps.counted[day].map { Int($0) },
                                           sleepHours: night?.hours, sleepOnset: night?.onset,
                                           workoutMinutes: longest?.minutes, workoutType: longest?.name, workouts: sessions,
                                           wakeTime: night?.wake, mindfulMinutes: mindfulByDay[day])
@@ -310,13 +310,12 @@ public enum Replay {
         for workout in workouts {
             let minutes = workout.session.minutes
             let activity = Activity(workoutName: workout.session.name)
-            if activity.isWorkout, minutes >= 19, minutes < 20 {
-                let seconds = Int(((20 - minutes) * 60).rounded(.up))
-                let shown = minutes >= 19.5
+            // counted in the whole minutes shown: from 19:30 on a workout reads "20 min" and counts
+            if activity.isWorkout, minutes >= 19, workout.session.shownMinutes < 20 {
+                let seconds = Int(((19.5 - minutes) * 60).rounded())
                 notes.append(ReplayNote(
-                    kind: .almostTwentyMinutes, day: day.day, matters: shown || !day.countsAsWorkout,
-                    text: "\(format.workout(workout))差 \(seconds) 秒到 20 分钟，不算运动"
-                        + (shown ? "；App 里会显示成「\(Int(minutes.rounded())) min」" : "")
+                    kind: .almostTwentyMinutes, day: day.day, matters: !day.countsAsWorkout,
+                    text: "\(format.workout(workout))显示「19 min」，不算运动；再多 \(seconds) 秒就按 20 分钟算"
                         + (day.countsAsWorkout ? "" : "；这天因此没有运动")))
             }
             if activity == .mindfulness, minutes >= 20 {
@@ -328,16 +327,11 @@ public enum Replay {
     }
 
     static func stepNotes(_ day: ReplayDay) -> [ReplayNote] {
-        guard let steps = day.snapshot.steps else { return [] }
-        let goal = DisciplineRules.standard.activeDaySteps
-        let best = day.stepsBySource.values.max() ?? steps
-        let near = abs(steps - goal) < 300
-        let straddles = (best >= goal) != (steps >= goal)
-        guard near || straddles else { return [] }
+        guard let steps = day.snapshot.steps, abs(steps - DisciplineRules.standard.activeDaySteps) < 300 else { return [] }
         let sources = day.stepsBySource.sorted { $0.value > $1.value }
             .map { "\($0.key) \(ReplayFormat.number($0.value))" }.joined(separator: "，")
-        return [ReplayNote(kind: .stepsNearGoal, day: day.day, matters: straddles,
-                           text: "步数估算 \(ReplayFormat.number(steps))（\(sources)），离 1 万很近，以手机「健康」App 当天的步数为准")]
+        return [ReplayNote(kind: .stepsNearGoal, day: day.day, matters: false,
+                           text: "步数 \(ReplayFormat.number(steps))，离 1 万很近（各来源：\(sources)；App 取记得最多的那个）")]
     }
 
     static func travelNotes(_ day: Date, export: HealthExport, calendar: Calendar, format: ReplayFormat) -> [ReplayNote] {
@@ -398,32 +392,22 @@ public enum Replay {
     }
 }
 
-/// Steps per day, the way Apple Health adds them up when the Watch and the iPhone both count: in
-/// each stretch of time only the source higher in the list counts, a lower one fills the gaps
-/// (the Watch on its charger). The order Apple Health uses is set on the phone, so the source that
-/// counted most comes first here. This is an estimate: the Health app's daily total is the truth.
+/// Steps per day as the app counts them (`HealthKitProvider.dailySteps`): each source's samples
+/// split over the days they span by time, as Apple Health's daily statistics split them, and the
+/// day's count is the source that counted the most. Sources are never added together, so a WHOOP
+/// day sample on top of the iPhone's count doesn't count a walk twice.
 struct DailySteps {
-    var merged: [Date: Double] = [:]
+    var counted: [Date: Double] = [:]
     var bySource: [Date: [String: Double]] = [:]
 
     init(_ samples: [HealthExport.Steps], from first: Date, to end: Date, calendar: Calendar) {
         let inRange = samples.filter { $0.end > first && $0.start < end || ($0.start == $0.end && $0.start >= first && $0.start < end) }
-        let totals = Dictionary(grouping: inRange, by: \.source).mapValues { $0.reduce(0) { $0 + $1.count } }
-        let order = totals.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }.map(\.key)
-        var covered: [DateInterval] = []
-        for source in order {
-            let mine = inRange.filter { $0.source == source }
-            for sample in mine {
-                let free = Self.uncoveredFraction(of: sample, in: covered)
-                Self.spread(sample, count: sample.count * free, calendar: calendar) { day, part in
-                    merged[day, default: 0] += part
-                }
-                Self.spread(sample, count: sample.count, calendar: calendar) { day, part in
-                    bySource[day, default: [:]][source, default: 0] += part
-                }
+        for sample in inRange {
+            Self.spread(sample, count: sample.count, calendar: calendar) { day, part in
+                bySource[day, default: [:]][sample.source, default: 0] += part
             }
-            covered = Self.union(covered + mine.map { DateInterval(start: $0.start, end: $0.end) })
         }
+        counted = bySource.compactMapValues { $0.values.max() }
     }
 
     /// Splits a sample over the days it spans, by time (as Apple Health's daily totals do).
@@ -438,38 +422,6 @@ struct DailySteps {
             add(day, count * stop.timeIntervalSince(start) / length)
             start = stop
         }
-    }
-
-    private static func uncoveredFraction(of sample: HealthExport.Steps, in covered: [DateInterval]) -> Double {
-        let length = sample.end.timeIntervalSince(sample.start)
-        // first covered stretch that ends after the sample starts
-        var low = 0, high = covered.count
-        while low < high {
-            let mid = (low + high) / 2
-            if covered[mid].end <= sample.start { low = mid + 1 } else { high = mid }
-        }
-        guard length > 0 else {
-            return low < covered.count && covered[low].start <= sample.start ? 0 : 1
-        }
-        var overlap: TimeInterval = 0
-        var i = low
-        while i < covered.count, covered[i].start < sample.end {
-            overlap += max(0, min(sample.end, covered[i].end).timeIntervalSince(max(sample.start, covered[i].start)))
-            i += 1
-        }
-        return max(0, 1 - overlap / length)
-    }
-
-    private static func union(_ intervals: [DateInterval]) -> [DateInterval] {
-        var result: [DateInterval] = []
-        for interval in intervals.sorted(by: { $0.start < $1.start }) {
-            if let last = result.last, interval.start <= last.end {
-                result[result.count - 1] = DateInterval(start: last.start, end: max(last.end, interval.end))
-            } else {
-                result.append(interval)
-            }
-        }
-        return result
     }
 }
 

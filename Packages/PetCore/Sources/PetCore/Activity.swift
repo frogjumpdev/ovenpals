@@ -124,6 +124,10 @@ public struct WorkoutSession: Codable, Sendable, Equatable {
         self.minutes = minutes
         self.distanceKm = distanceKm
     }
+
+    /// Whole minutes, as the app shows them ("Run 20 min") and as the rules count them: what reads
+    /// "20 min" on screen counts as 20. WHOOP writes every activity one second short of its minutes.
+    public var shownMinutes: Int { Int(minutes.rounded()) }
 }
 
 /// Wall-clock wake-up target, e.g. 07:00.
@@ -210,7 +214,7 @@ public struct ActivityTracker: Sendable {
         for workout in day.allWorkouts {
             let activity = Activity(workoutName: workout.name)
             let needed = activity == .mindfulness ? minMindfulMinutes : rules.minWorkoutMinutes
-            if workout.minutes >= needed { result.insert(activity) }
+            if Double(workout.shownMinutes) >= needed { result.insert(activity) }
         }
         return result
     }

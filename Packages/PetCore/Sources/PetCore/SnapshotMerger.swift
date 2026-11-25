@@ -2,8 +2,9 @@ import Foundation
 
 /// Combines per-day snapshots from several sources into one snapshot per day.
 ///
-/// A wearable is better at sleep and recovery, the phone is better at steps (it is carried
-/// all day; a Whoop doesn't count steps). HRV and its method always come from the same
+/// A wearable is better at sleep and recovery; steps come from Apple Health (the Whoop API sends
+/// none, though a WHOOP band writes its own daily steps into Apple Health, where
+/// `HealthKitProvider` keeps only the source that counted most). HRV and its method always come from the same
 /// snapshot so SDNN and RMSSD are never mixed within one day.
 public enum SnapshotMerger {
     /// Earlier sources win for sleep, HRV, resting heart rate and recovery.

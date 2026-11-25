@@ -5,7 +5,8 @@ import Foundation
 public struct DisciplineRules: Sendable, Equatable {
     public var workoutsPerWeek = 3
     public var onTimeNightsPerWeek = 5
-    /// One workout = a single workout this long…
+    /// One workout = a single workout this long, in the whole minutes the app shows
+    /// (`WorkoutSession.shownMinutes`)…
     public var minWorkoutMinutes: Double = 20
     /// …or a day with at least this many steps.
     public var activeDaySteps = 10_000
@@ -84,11 +85,13 @@ public struct DisciplineTracker: Sendable {
         day.allWorkouts.contains { countsAsWorkout($0) } || (day.steps ?? 0) >= rules.activeDaySteps
     }
 
-    /// A single workout is one of the week's workouts: 20+ minutes of a sport. A Mind & Body or
+    /// A single workout is one of the week's workouts: 20+ minutes of a sport, counted in the whole
+    /// minutes the app shows, so a workout that reads "20 min" counts (WHOOP writes a 20-minute
+    /// activity into Apple Health as 19:59). A Mind & Body or
     /// Tai Chi session feeds Matcha (mindfulness), which PRD v0.3 §5.1 lists as a habit, not a sport,
     /// so it grows no workout bubble and fills no workout cell however long it is.
     public func countsAsWorkout(_ workout: WorkoutSession) -> Bool {
-        workout.minutes >= rules.minWorkoutMinutes && Activity(workoutName: workout.name).isWorkout
+        Double(workout.shownMinutes) >= rules.minWorkoutMinutes && Activity(workoutName: workout.name).isWorkout
     }
 
     /// nil when there is no sleep data for that night.

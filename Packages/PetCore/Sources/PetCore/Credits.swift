@@ -165,7 +165,7 @@ public struct CreditRules: Sendable {
         var seen: [String: Int] = [:]
         return workouts.map { workout in
             guard discipline.countsAsWorkout(workout) else { return nil }
-            let base = "workout:\(workout.name):\(Int(workout.minutes.rounded()))"
+            let base = "workout:\(workout.name):\(workout.shownMinutes)"
             let n = seen[base, default: 0]
             seen[base] = n + 1
             return n == 0 ? base : "\(base)#\(n + 1)"

@@ -23,8 +23,12 @@ final class PRDv03BoundaryTests: XCTestCase {
     // MARK: - §4.1 One workout: a single workout of 20+ minutes, or 10,000+ steps that day
 
     func testWorkoutNeedsTwentyMinutesInOneGo() {
-        XCTAssertFalse(tracker.countsAsWorkout(day("2026-11-17", workouts: [run(19.9)])))
+        // counted in the whole minutes the app shows: 19:29 reads "19 min", 19:30 reads "20 min"
+        XCTAssertFalse(tracker.countsAsWorkout(day("2026-11-17", workouts: [run(19 + 29.0 / 60)])))
+        XCTAssertTrue(tracker.countsAsWorkout(day("2026-11-17", workouts: [run(19.5)])))
         XCTAssertTrue(tracker.countsAsWorkout(day("2026-11-17", workouts: [run(20)])))
+        // WHOOP writes a 20-minute activity as 19:59
+        XCTAssertTrue(tracker.countsAsWorkout(day("2026-11-17", workouts: [run(19.984, "Workout")])))
         // two short ones don't add up: 「单次」 ≥ 20 minutes
         XCTAssertFalse(tracker.countsAsWorkout(day("2026-11-17", workouts: [run(15), run(15, "Ride")])))
     }
@@ -36,7 +40,7 @@ final class PRDv03BoundaryTests: XCTestCase {
 
     func testAShortWorkoutGrowsNoBubble() {
         let rules = CreditRules(discipline: tracker)
-        XCTAssertEqual(rules.workoutKeys([run(19.9), run(20)]), [nil, "workout:Run:20"])
+        XCTAssertEqual(rules.workoutKeys([run(19.4), run(19.984)]), [nil, "workout:Run:20"])
     }
 
     func testTwoWorkoutsOnOneDayAreOneForTheWeek() {

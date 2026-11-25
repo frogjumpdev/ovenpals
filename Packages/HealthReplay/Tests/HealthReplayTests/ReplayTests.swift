@@ -88,22 +88,24 @@ final class ReplayTests: XCTestCase {
             "<WorkoutStatistics type=\"HKQuantityTypeIdentifierDistanceWalkingRunning\" startDate=\"\(t("2026-11-16 07:00"))\" "
             + "endDate=\"\(t("2026-11-16 07:32"))\" sum=\"5.1\" unit=\"km\"/>"))
         rows.append(workout("Running", "Strava", "2026-11-16 07:01", "2026-11-16 07:33", minutes: 31))
-        // Tuesday: 19.6 minutes
+        // Tuesday: 19.6 minutes, shown as "20 min"
         rows.append(workout("Running", "Apple Watch", "2026-11-17 18:00", "2026-11-17 18:20", minutes: 19.6))
         // Wednesday: 30 minutes of Mind & Body
         rows.append(workout("MindAndBody", "Apple Watch", "2026-11-18 20:00", "2026-11-18 20:30", minutes: 30))
         // Thursday: yoga, recorded in Tokyo's time zone
         rows.append(workout("Yoga", "Apple Watch", "2026-11-19 18:00", "2026-11-19 18:45", minutes: 45, inner:
             "<MetadataEntry key=\"HKTimeZone\" value=\"Asia/Tokyo\"/>"))
-        // Friday: 9,000 steps on the Watch, 3,000 on the phone at the same time, 1,200 more on the phone
-        // after the Watch went on its charger at 20:00 → Apple Health adds up 10,200
+        // Friday: 9,900 steps on the Watch, 3,000 on the phone at the same time, 1,200 more on the phone
+        // after the Watch went on its charger at 20:00: the app takes the Watch's 9,900
         for hour in 8..<20 {
             let start = String(format: "2026-11-20 %02d:00", hour), end = String(format: "2026-11-20 %02d:59", hour)
-            rows.append(steps("Apple Watch", start, end, 750))
+            rows.append(steps("Apple Watch", start, end, 825))
             rows.append(steps("iPhone", start, end, 250))
         }
         rows.append(steps("iPhone", "2026-11-20 20:00", "2026-11-20 20:59", 600))
         rows.append(steps("iPhone", "2026-11-20 21:00", "2026-11-20 21:59", 600))
+        // Saturday: a run of 19.3 minutes, shown as "19 min"
+        rows.append(workout("Running", "Apple Watch", "2026-11-21 08:00", "2026-11-21 08:20", minutes: 19.3))
         // Saturday: a walk home across midnight, half each side
         rows.append(steps("Apple Watch", "2026-11-21 23:30", "2026-11-22 00:30", 600))
         // Saturday 03:00 here, written while the phone was on Tokyo time
@@ -126,7 +128,7 @@ final class ReplayTests: XCTestCase {
 
     func testReadsWhatTheAppReads() throws {
         let export = try HealthExport.read(xml: weekXML)
-        XCTAssertEqual(export.workouts.count, 5)
+        XCTAssertEqual(export.workouts.count, 6)
         XCTAssertEqual(export.workouts[0].activityType, "Running")
         XCTAssertEqual(export.workouts[0].distanceKm ?? 0, 5.1, accuracy: 0.001)
         XCTAssertEqual(export.workouts[2].minutes, 19.6, accuracy: 0.001)
@@ -145,8 +147,8 @@ final class ReplayTests: XCTestCase {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
         try weekXML.write(to: folder.appendingPathComponent("export.xml"), atomically: true, encoding: .utf8)
-        XCTAssertEqual(try HealthExport.read(folder).workouts.count, 5)
-        XCTAssertEqual(try HealthExport.read(folder.appendingPathComponent("export.xml")).workouts.count, 5)
+        XCTAssertEqual(try HealthExport.read(folder).workouts.count, 6)
+        XCTAssertEqual(try HealthExport.read(folder.appendingPathComponent("export.xml")).workouts.count, 6)
         XCTAssertThrowsError(try HealthExport.read(folder.appendingPathComponent("nothing.xml")))
     }
 
@@ -159,7 +161,7 @@ final class ReplayTests: XCTestCase {
         try String(repeating: "<!-- clinical -->", count: 10_000).write(to: folder.appendingPathComponent("export_cda.xml"),
                                                                           atomically: true, encoding: .utf8)
         XCTAssertEqual(HealthExport.mainFile(in: folder).lastPathComponent, "导出.xml")
-        XCTAssertEqual(try HealthExport.read(folder).workouts.count, 5)
+        XCTAssertEqual(try HealthExport.read(folder).workouts.count, 6)
     }
 
     // MARK: - Replaying
@@ -171,8 +173,9 @@ final class ReplayTests: XCTestCase {
         XCTAssertEqual(result.weeks.count, 1)
         let week = result.weeks[0]
         XCTAssertTrue(week.isFinished)
-        // the run (Mon), 10,200 steps (Fri), the yoga (Thu); not 19.6 minutes (Tue) or Mind & Body (Wed)
-        XCTAssertEqual(week.days.map(\.countsAsWorkout), [true, false, false, true, true, false, false])
+        // the run (Mon), 19.6 minutes shown as 20 (Tue), the yoga (Thu); not Mind & Body (Wed),
+        // 9,900 steps (Fri) or 19.3 minutes (Sat)
+        XCTAssertEqual(week.days.map(\.countsAsWorkout), [true, true, false, true, false, false, false])
         XCTAssertEqual(week.progress.workouts, 3)
         // the nap makes Tuesday on time, AutoSleep makes Wednesday on time; Thursday has no data
         XCTAssertEqual(week.days.map(\.onTime), [true, true, true, nil, true, true, true])
@@ -184,22 +187,42 @@ final class ReplayTests: XCTestCase {
         XCTAssertEqual(result.workoutSources, ["Apple Watch", "Strava"])
     }
 
-    func testStepsAreAddedUpTheWayAppleHealthDoes() throws {
+    func testStepsComeFromTheSourceThatCountedMost() throws {
         let result = try XCTUnwrap(Replay.run(try HealthExport.read(xml: weekXML), settings: settings()))
         let friday = result.days[4]
-        XCTAssertEqual(friday.snapshot.steps, 10_200)
-        XCTAssertEqual(friday.stepsBySource, ["Apple Watch": 9_000, "iPhone": 4_200])
-        XCTAssertTrue(friday.activities.contains(.walking))
+        // never added together, though the phone's evening steps fall where the Watch had none
+        XCTAssertEqual(friday.snapshot.steps, 9_900)
+        XCTAssertEqual(friday.stepsBySource, ["Apple Watch": 9_900, "iPhone": 4_200])
+        XCTAssertFalse(friday.activities.contains(.walking))
         // a sample across midnight is split by time
         XCTAssertEqual(result.days[5].snapshot.steps, 300)
         XCTAssertEqual(result.days[6].snapshot.steps, 300)
         XCTAssertNil(result.days[0].snapshot.steps)
     }
 
+    func testAWhoopDaySampleIsNotAddedToThePhone() throws {
+        // WHOOP writes one sample from one sleep to the next; the phone counts the same walks
+        var export = HealthExport()
+        let monday = day("2026-11-16"), hour: TimeInterval = 3600
+        export.steps.append(.init(source: "WHOOP", start: monday.addingTimeInterval(1 * hour),
+                                  end: monday.addingTimeInterval(25 * hour), count: 9_600))
+        for h in 8..<20 {
+            let start = monday.addingTimeInterval(TimeInterval(h) * hour)
+            export.steps.append(.init(source: "iPhone", start: start, end: start.addingTimeInterval(1_800), count: 700))
+        }
+        var settings = ReplaySettings(timeZone: la, days: 1)
+        settings.lastDay = monday
+        let result = try XCTUnwrap(Replay.run(export, settings: settings))
+        let first = try XCTUnwrap(result.days.first { $0.day == monday })
+        // WHOOP's 23 of 24 hours on Monday = 9,200; the phone 8,400; never 17,600
+        XCTAssertEqual(first.snapshot.steps, 9_200)
+        XCTAssertFalse(first.countsAsWorkout)
+    }
+
     func testPetsGetDoubleExperienceInTheDisciplinedWeek() throws {
         let result = try XCTUnwrap(Replay.run(try HealthExport.read(xml: weekXML), settings: settings()))
         let experience = result.progress.filter { $0.value.isUnlocked }.mapValues(\.experience)
-        XCTAssertEqual(experience, [.running: 2, .yoga: 2, .walking: 2, .mindfulness: 4, .onTimeSleep: 12, .earlyRise: 12])
+        XCTAssertEqual(experience, [.running: 4, .yoga: 2, .mindfulness: 4, .onTimeSleep: 12, .earlyRise: 12])
         XCTAssertEqual(result.progress[.onTimeSleep]?.level, 4)
         // two bubbles for the one run on Monday (both apps wrote it), and the night's moon
         XCTAssertEqual(result.days[0].credits.map(\.kind), [.workout, .workout, .night])
@@ -230,9 +253,9 @@ final class ReplayTests: XCTestCase {
         XCTAssertTrue(twice.text.contains("Strava"), twice.text)
 
         let short = try only(.almostTwentyMinutes)
-        XCTAssertEqual(short.day, day("2026-11-17"))
+        XCTAssertEqual(short.day, day("2026-11-21"))
         XCTAssertTrue(short.matters)
-        XCTAssertTrue(short.text.contains("24 秒") && short.text.contains("20 min"), short.text)
+        XCTAssertTrue(short.text.contains("12 秒") && short.text.contains("19 min"), short.text)
 
         let mind = try only(.mindWorkout)
         XCTAssertEqual(mind.day, day("2026-11-18"))
@@ -240,8 +263,9 @@ final class ReplayTests: XCTestCase {
 
         let steps = try only(.stepsNearGoal)
         XCTAssertEqual(steps.day, day("2026-11-20"))
-        // the Watch alone is under 10,000, Apple Health's total is over: worth checking on the phone
-        XCTAssertTrue(steps.matters)
+        // for information: 9,900 is under 10,000 whichever way it is counted
+        XCTAssertFalse(steps.matters)
+        XCTAssertTrue(steps.text.contains("9,900"), steps.text)
 
         let travel = try XCTUnwrap(byKind[.travel])
         XCTAssertEqual(travel.map(\.day), [day("2026-11-19"), day("2026-11-21")])
@@ -285,8 +309,8 @@ final class ReplayTests: XCTestCase {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent("export-\(UUID().uuidString).xml")
         try xml.write(to: file, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: file) }
-        XCTAssertEqual(try HealthExport.read(file).workouts.count, 5)
-        XCTAssertEqual(try HealthExport.read(xml: xml).workouts.count, 5)
+        XCTAssertEqual(try HealthExport.read(file).workouts.count, 6)
+        XCTAssertEqual(try HealthExport.read(xml: xml).workouts.count, 6)
         let range = try XCTUnwrap(HealthExport.dtdRange(Data(xml.utf8)))
         XCTAssertTrue(String(decoding: Data(xml.utf8)[range], as: UTF8.self).hasPrefix("<!DOCTYPE HealthData ["))
         XCTAssertNil(HealthExport.dtdRange(Data("<HealthData/>".utf8)))

@@ -30,7 +30,7 @@ struct HealthKitProvider: HealthDataProvider {
     func snapshots(from start: Date, to end: Date) async throws -> [HealthSnapshot] {
         let firstDay = calendar.startOfDay(for: start)
 
-        async let steps = daily(.stepCount, unit: .count(), options: .cumulativeSum, from: firstDay, to: end)
+        async let steps = dailySteps(from: firstDay, to: end)
         async let hrv = daily(.heartRateVariabilitySDNN, unit: .secondUnit(with: .milli), options: .discreteAverage, from: firstDay, to: end)
         async let rhr = daily(.restingHeartRate, unit: .count().unitDivided(by: .minute()), options: .discreteAverage, from: firstDay, to: end)
         async let sleep = dailySleep(from: firstDay, to: end)
@@ -96,6 +96,34 @@ struct HealthKitProvider: HealthDataProvider {
             let quantity = options.contains(.cumulativeSum) ? stats.sumQuantity() : stats.averageQuantity()
             if let quantity {
                 result[calendar.startOfDay(for: stats.startDate)] = quantity.doubleValue(for: unit)
+            }
+        }
+        return result
+    }
+
+    /// Steps per day from the one source that counted the most (the iPhone, a Watch, WHOOP…).
+    /// Apple Health's own daily total merges sources in the order set in the Health app, and a
+    /// source that writes one sample per whole day (WHOOP does, from one sleep to the next) is
+    /// added on top of the phone's count when it sits below the phone: the same walk counted twice.
+    /// The largest single source never counts a step twice, whatever that order is.
+    private func dailySteps(from start: Date, to end: Date) async throws -> [Date: Double] {
+        let predicate = HKSamplePredicate.quantitySample(
+            type: HKQuantityType(.stepCount),
+            predicate: HKQuery.predicateForSamples(withStart: start, end: end)
+        )
+        let descriptor = HKStatisticsCollectionQueryDescriptor(
+            predicate: predicate,
+            options: [.cumulativeSum, .separateBySource],
+            anchorDate: start,
+            intervalComponents: DateComponents(day: 1)
+        )
+        let collection = try await descriptor.result(for: store)
+
+        var result: [Date: Double] = [:]
+        for stats in collection.statistics() {
+            let bySource = (stats.sources ?? []).compactMap { stats.sumQuantity(for: $0)?.doubleValue(for: .count()) }
+            if let most = bySource.max() {
+                result[calendar.startOfDay(for: stats.startDate)] = most
             }
         }
         return result

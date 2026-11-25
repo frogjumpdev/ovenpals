@@ -177,7 +177,7 @@ Ovenpals 真实数据回放
 数据来源：步数 \(result.stepSources.joined(separator: "、").nilIfEmpty ?? "无")；睡眠 \(result.sleepSourceNames.joined(separator: "、").nilIfEmpty ?? "无")；\
 运动 \(result.workoutSources.joined(separator: "、").nilIfEmpty ?? "无")
 假定：每个泡泡第二天 04:00 前都收下了；没有请假、没有「手表记错了」；只算 Apple 健康，Whoop 的宠物不在这里。
-步数是照 Apple 健康合并手表和手机的方式估的，和「健康」App 里的数可能差几十步。
+步数和 App 一样，每天取记得最多的那一个来源；「健康」App 把几个来源合起来，显示的数可能更大。
 
 
 """
@@ -222,7 +222,7 @@ let titles: [ReplayNote.Kind: String] = [
     .eveningNap: "晚上的小睡被当成入睡时间",
     .otherSleepSource: "入睡时间来自别的 App",
     .duplicateWorkout: "同一次运动可能记了两次",
-    .almostTwentyMinutes: "差一点到 20 分钟的运动",
+    .almostTwentyMinutes: "差一点算 20 分钟的运动",
     .mindWorkout: "正念 / 太极类运动（算 Matcha，不算运动）",
     .stepsNearGoal: "步数离 1 万很近",
     .travel: "在别的时区记的数据",

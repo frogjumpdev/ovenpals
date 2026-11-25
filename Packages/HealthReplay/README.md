@@ -31,7 +31,7 @@ swift run -c release --package-path Packages/HealthReplay health-replay ~/Downlo
   - 晚上的小睡被当成入睡时间（18:00 以后的第一段睡眠）；
   - 入睡时间来自别的 App（比如 AutoSleep 比手表早记了一个小时）；
   - 同一次运动可能记了两次（手表和 Strava 各写一次，会长两个泡泡）；
-  - 差一点到 20 分钟的运动（19.5 分以上 App 会显示成「20 min」但不算）；
+  - 差一点算 20 分钟的运动（运动按显示的整分钟算，19 分 30 秒以上显示「20 min」、也算数）；
   - 正念 / 太极类运动（只喂 Matcha，不算一周的运动）；
   - 步数离 1 万很近；
   - 在别的时区记的数据（出行）。
@@ -39,8 +39,8 @@ swift run -c release --package-path Packages/HealthReplay health-replay ~/Downlo
 ## 和 App 不一样的地方
 
 - 假定每个泡泡第二天 04:00 前都收下了；导出里没有请假和「手表记错了」，所以都当没有。
-- 步数：App 读的是「健康」App 合并手表和手机之后的每日总数，导出里只有各来源的原始记录。这里照「健康」的做法估：
-  记得多的来源优先，别的来源只补它没记的时段。离 1 万很近的日子会列出来，以手机上「健康」App 当天的数为准。
+- 步数：和 App 一样，每天取记得最多的那一个来源（iPhone、手表、WHOOP 各算各的，不加在一起）。「健康」App 自己的
+  每日总数会把几个来源合起来，所以可能比这里大。
 - 只算 Apple 健康。Whoop 的三只宠物（Honey、Warm Milk、Protein Bar）要 Whoop 的数据，这里不算。
 - 规则直接用 `Packages/PetCore`，读数据的方式照 `HealthPet3D/Health/HealthKitProvider.swift`（运动名称表是抄过来的，那边改了这边要跟着改）。
 
