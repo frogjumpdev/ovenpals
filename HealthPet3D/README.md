@@ -352,8 +352,18 @@ PetCore 里有两组按 PRD v0.3 写的数据测试，Linux 上也能跑（`cd P
   Whoop 和 Apple Watch 同时戴、夏令时、坐飞机换时区），从原始数据一路算到本周格子、泡泡、宠物经验和 Toast 等级。
   `DataTestKit.swift` 里的 `AppRun` 按 `AppModel.evaluate` 的顺序算，改那边时这边要跟着改。
 
-发现了还没修的问题，测试用 `knownIssue` 包着：问题还在时这条测试显示 skipped（原因写在里面），修好后它会失败、提醒把包装拿掉。
-跑完看 skipped 的那几条就是现在的问题清单。
+- `CalendarDayTests`：换时区之后存下的日子还是原来那天（12 个时区两两互飞，夏令时那几天也试）。
+
+测出来的两个问题同日已修：
+
+- **换时区**：打卡记录、自律周、请假、「手表记错了」和入账编号都按「某天 0 点那一刻」存，飞到别的时区后同一天会被当成新的一天
+  （经验重复、Memories 重复「Collected for you」、旧自律周的翻倍对不上、等级可能下降）。现在每次计算前 `PetStore.adopt` /
+  `CreditBook.adopt` 把存下的日子换回它的日期（PetCore `CalendarDay`），iCloud 拿回来的也一样。适用于 UTC−10:59 到 UTC+13 之间存的日子
+  （夏威夷到新西兰夏令时）；现在所在时区存的日子任何时区都不变。航班前后靠近午夜的运动可能落到相邻的一天，这是按当地日期算的本来结果。
+- **正念不算运动**：Mind & Body、太极再长也只喂抹茶，不占本周运动格（`DisciplineTracker.countsAsWorkout`）；Today 卡片和日历小卡显示
+  能算数的那次运动。
+
+以后再发现还没修的问题，测试用 `knownIssue` 包着：问题还在时这条测试显示 skipped（原因写在里面），修好后它会失败、提醒把包装拿掉。
 
 ## 还没做
 

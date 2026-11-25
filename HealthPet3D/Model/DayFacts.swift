@@ -103,8 +103,14 @@ extension AppModel {
         ((bookedToday.flatMap(discipline.isOnTimeNight) ?? false) ? 1 : 0) + ((bookedToday.map(discipline.countsAsWorkout) ?? false) ? 1 : 0)
     }
 
-    /// The longest workout today, if any.
-    var mainWorkout: WorkoutSession? { today?.allWorkouts.max { $0.minutes < $1.minutes } }
+    /// Today's workout to show: the longest one that counts (a sport, 20+ minutes), else the longest
+    /// of any kind. A long Mind & Body session never hides a run that counts.
+    var mainWorkout: WorkoutSession? {
+        let workouts = today?.allWorkouts ?? []
+        let tracker = discipline
+        return workouts.filter { tracker.countsAsWorkout($0) }.max { $0.minutes < $1.minutes }
+            ?? workouts.max { $0.minutes < $1.minutes }
+    }
 
     /// The day's line after the morning wake-up (早上揭晓), and the expression that goes with it.
     /// Only good news: a level-up (collected overnight) gets 升级 (大庆祝 at Lv 10 and 20); an
@@ -124,7 +130,7 @@ extension AppModel {
     func petLine(afterCheckIn: Bool = false, energy: PetEnergy? = nil) -> String {
         if isPetAsleep { return "Zzz… see you in the morning." }
         if afterCheckIn || Bool.random() {
-            if let workout = mainWorkout, workout.minutes >= discipline.rules.minWorkoutMinutes {
+            if let workout = mainWorkout, discipline.countsAsWorkout(workout) {
                 return "\(workout.name) logged. Proud of you!"
             }
             if workedOut { return "10k steps! Nice walking." }

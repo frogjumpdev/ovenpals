@@ -243,16 +243,22 @@ final class DataScenarioTests: XCTestCase {
     }
 
     /// A Mind & Body or Tai Chi workout feeds Matcha (mindfulness), which PRD §5.1 lists as a habit,
-    /// not a sport: it grows no workout bubble and isn't a workout in the ledger's milestones. The
-    /// week should not count it as one of its 3 workouts either.
-    func testAMindfulnessWorkoutIsNotOneOfTheWeeksWorkouts() throws {
-        let day = w.appleDay("2026-11-17", steps: 3_000, workouts: [WorkoutSession(name: "Mind", minutes: 30)])
+    /// not a sport: no workout bubble, no workout cell, not a workout in the ledger's milestones.
+    func testAMindfulnessWorkoutIsNotOneOfTheWeeksWorkouts() {
         let t = w.tracker()
-        XCTAssertEqual(w.activities().activities(on: day), [.mindfulness])
-        XCTAssertTrue(CreditRules(discipline: t).credits(on: day).isEmpty)
-        try knownIssue("a 20+ minute Mind & Body / Tai Chi workout lights a workout cell (DisciplineTracker.countsAsWorkout reads the longest workout of any kind)") {
-            !t.countsAsWorkout(day)
-        }
+        let mind = w.appleDay("2026-11-17", steps: 3_000, workouts: [WorkoutSession(name: "Mind", minutes: 30)])
+        XCTAssertEqual(w.activities().activities(on: mind), [.mindfulness])
+        XCTAssertTrue(CreditRules(discipline: t).credits(on: mind).isEmpty)
+        XCTAssertFalse(t.countsAsWorkout(mind))
+        // a longer mindfulness session doesn't hide a shorter run that counts
+        let both = w.appleDay("2026-11-18", workouts: [WorkoutSession(name: "Mind", minutes: 45),
+                                                       WorkoutSession(name: "Run", minutes: 22)])
+        XCTAssertTrue(t.countsAsWorkout(both))
+        XCTAssertEqual(t.week(containing: mind.day, snapshots: [mind, both]).workouts, 1)
+        // nor a run that is too short
+        let short = w.appleDay("2026-11-19", workouts: [WorkoutSession(name: "Mind", minutes: 45),
+                                                        WorkoutSession(name: "Run", minutes: 15)])
+        XCTAssertFalse(t.countsAsWorkout(short))
     }
 
     // MARK: - Travelling
@@ -269,45 +275,50 @@ final class DataScenarioTests: XCTestCase {
         return (la, tokyo, tokyoWorld)
     }
 
-    func testAfterFlyingCollectedFoodIsNotCollectedAgain() throws {
+    func testAfterFlyingCollectedFoodIsNotCollectedAgain() {
         let (la, tokyo, tokyoWorld) = tripToTokyo()
         var app = AppRun(world: w, since: "2026-11-16")
         app.open(la, at: "2026-11-20 09:00") // everything collected at 04:00 in LA
         XCTAssertEqual(app.autoBooked.count, 8)
 
-        // the first open in Tokyo, with the book from LA (CreditBook keeps ids with the day's start)
-        let rules = CreditRules(discipline: tokyoWorld.tracker())
-        let again = rules.due(in: tokyo, booked: app.bookedIDs, now: tokyoWorld.at("2026-11-21 09:00"), since: app.since)
-        try knownIssue("after a time zone change, days already collected get a second set of 「Collected for you」 ledger lines (credit ids carry the day's start instant)") {
-            again.isEmpty
-        }
+        // the first open in Tokyo reads the same days again, now as Tokyo days
+        app.move(to: tokyoWorld)
+        app.open(tokyo, now: tokyoWorld.at("2026-11-21 09:00"))
+        XCTAssertEqual(app.autoBooked.count, 8, "no second 「Collected for you」 line for a day already collected")
+        XCTAssertTrue(app.pending.isEmpty)
     }
 
-    func testAfterFlyingPetsDoNotLevelUpTwice() throws {
+    func testAfterFlyingPetsDoNotLevelUpTwice() {
         let (la, tokyo, tokyoWorld) = tripToTokyo()
-        let a = w.activities()
-        // PetStore.recordActivities keeps the log forever, keyed by each day's start instant
-        var kept = a.log(la)
-        for (day, done) in tokyoWorld.activities().log(tokyo) { kept[day, default: []].formUnion(done) }
-        let p = ActivityProgress.all(log: kept, disciplinedWeeks: [], weekStart: w.tracker().weekStart(for:))
-        try knownIssue("after a time zone change, the same days are logged again under new keys and pets get their experience twice (PetStore.activityLog / disciplinedWeeks are keyed by Date)") {
-            p[.running]?.sessions == 4
-        }
+        var app = AppRun(world: w, since: "2026-11-16")
+        app.open(la, at: "2026-11-20 09:00")
+        XCTAssertEqual(app.sessions(.running), 4)
+        app.move(to: tokyoWorld)
+        app.open(tokyo, now: tokyoWorld.at("2026-11-21 09:00"))
+        XCTAssertEqual(app.sessions(.running), 4)
+        XCTAssertEqual(app.sessions(.walking), 4)
+        XCTAssertEqual(app.log.count, 4)
     }
 
-    /// Days logged in Los Angeles keep their LA keys; once the phone is in Tokyo, the week each old
-    /// day falls in is worked out on Tokyo's calendar and no longer matches the 自律周 saved in LA,
-    /// so the double experience of past weeks is lost. PRD §3: levels never go down.
-    func testAfterFlyingLevelsNeverGoDown() throws {
-        let tokyo = World("Asia/Tokyo")
-        // an LA 自律周 two months ago, a run every day of it
-        let log = Dictionary(uniqueKeysWithValues: (14...20).map { (w.day("2026-09-\($0)"), Set([Activity.running])) })
-        let weeks: Set<Date> = [w.day("2026-09-14")]
-        let inLA = ActivityProgress.all(log: log, disciplinedWeeks: weeks, weekStart: w.tracker().weekStart(for:))
-        let inTokyo = ActivityProgress.all(log: log, disciplinedWeeks: weeks, weekStart: tokyo.tracker().weekStart(for:))
-        XCTAssertEqual(inLA[.running]?.experience, 14)
-        try knownIssue("after a time zone change, past 自律周 stop matching their days and the double experience is lost, so levels can go down") {
-            (inTokyo[.running]?.experience ?? 0) >= 14
+    /// Days logged in Los Angeles, a 自律周 among them, read on Tokyo's calendar (and the other
+    /// way round): each day still falls in its own week and keeps its double experience, and Toast
+    /// keeps its level. PRD §3: levels never go down.
+    func testAfterFlyingLevelsNeverGoDown() {
+        for (home, away) in [(w, World("Asia/Tokyo")), (World("Asia/Tokyo"), w),
+                             (World("Europe/Berlin"), World("Pacific/Auckland")), (World("Pacific/Honolulu"), World("Europe/London"))] {
+            let log = Dictionary(uniqueKeysWithValues: (14...20).map { (home.day("2026-09-\($0)"), Set([Activity.running])) })
+            let weeks: Set<Date> = [home.day("2026-09-14")]
+            let atHome = ActivityProgress.all(log: log, disciplinedWeeks: weeks, weekStart: home.tracker().weekStart(for:))
+            XCTAssertEqual(atHome[.running]?.experience, 14)
+
+            let c = away.calendar
+            let movedLog = CalendarDay.rekey(log, in: c) { $0.union($1) }
+            let movedWeeks = CalendarDay.rekey(weeks, in: c)
+            let abroad = ActivityProgress.all(log: movedLog, disciplinedWeeks: movedWeeks, weekStart: away.tracker().weekStart(for:))
+            let zones = "\(home.calendar.timeZone.identifier) → \(c.timeZone.identifier)"
+            XCTAssertEqual(abroad[.running]?.experience, 14, zones)
+            XCTAssertEqual(movedWeeks, [away.day("2026-09-14")], zones)
+            XCTAssertEqual(Set(movedLog.keys), Set((14...20).map { away.day("2026-09-\($0)") }), zones)
         }
     }
 }

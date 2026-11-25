@@ -79,8 +79,16 @@ public struct DisciplineTracker: Sendable {
         bedtime(forNightEnding: day).target(forNightEnding: day, calendar: calendar)
     }
 
+    /// The day had one of the week's workouts: a single sport workout of 20+ minutes, or 10,000+ steps.
     public func countsAsWorkout(_ day: HealthSnapshot) -> Bool {
-        (day.workoutMinutes ?? 0) >= rules.minWorkoutMinutes || (day.steps ?? 0) >= rules.activeDaySteps
+        day.allWorkouts.contains { countsAsWorkout($0) } || (day.steps ?? 0) >= rules.activeDaySteps
+    }
+
+    /// A single workout is one of the week's workouts: 20+ minutes of a sport. A Mind & Body or
+    /// Tai Chi session feeds Matcha (mindfulness), which PRD v0.3 §5.1 lists as a habit, not a sport,
+    /// so it grows no workout bubble and fills no workout cell however long it is.
+    public func countsAsWorkout(_ workout: WorkoutSession) -> Bool {
+        workout.minutes >= rules.minWorkoutMinutes && Activity(workoutName: workout.name).isWorkout
     }
 
     /// nil when there is no sleep data for that night.

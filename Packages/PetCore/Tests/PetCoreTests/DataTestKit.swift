@@ -87,9 +87,9 @@ struct World {
 /// (HealthPet3D/Model/AppModel.swift): collect what passed its 04:00, keep what still waits as a
 /// food bubble out of the counts, then the week, the log kept forever and the pets' levels.
 struct AppRun {
-    let world: World
-    let tracker: DisciplineTracker
-    let activities: ActivityTracker
+    private(set) var world: World
+    private(set) var tracker: DisciplineTracker
+    private(set) var activities: ActivityTracker
     var rules: CreditRules { CreditRules(discipline: tracker) }
 
     /// Credits eaten (tapped or collected at 04:00), by id: `CreditBook.bookedIDs`.
@@ -143,6 +143,22 @@ struct AppRun {
         for (day, done) in activities.log(booked, today: todayStart) {
             log[day, default: []].formUnion(done)
         }
+    }
+
+    /// The phone is now in `world`'s time zone (a flight): what was kept is rekeyed to its calendar,
+    /// as `PetStore.adopt` and `CreditBook.adopt` do in the app before anything is worked out.
+    mutating func move(to world: World) {
+        let calendar = world.calendar
+        bookedIDs = Set(bookedIDs.map { CalendarDay.rekeyID($0, in: calendar) })
+        since = CalendarDay.rekey(since, in: calendar)
+        leaveDays = CalendarDay.rekey(leaveDays, in: calendar)
+        log = CalendarDay.rekey(log, in: calendar) { $0.union($1) }
+        disciplinedWeeks = CalendarDay.rekey(disciplinedWeeks, in: calendar)
+        self.world = world
+        tracker = DisciplineTracker(rules: tracker.rules, bedtime: tracker.bedtime, weekendBedtime: tracker.weekendBedtime,
+                                    calendar: calendar)
+        activities = ActivityTracker(discipline: tracker, wakeTarget: activities.wakeTarget,
+                                     weekendWakeTarget: activities.weekendWakeTarget)
     }
 
     /// Taps every food bubble that is waiting (or only those `matching`).

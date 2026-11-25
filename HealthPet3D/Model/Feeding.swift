@@ -240,7 +240,7 @@ extension AppModel {
         guard !day.isFuture, let snapshot = weekDays.first(where: { $0.day == day.id }) else { return nil }
         let tracker = discipline
         var parts: [String] = []
-        if let workout = snapshot.allWorkouts.filter({ $0.minutes >= tracker.rules.minWorkoutMinutes }).max(by: { $0.minutes < $1.minutes }) {
+        if let workout = snapshot.allWorkouts.filter({ tracker.countsAsWorkout($0) }).max(by: { $0.minutes < $1.minutes }) {
             parts.append("\(workout.name) \(Int(workout.minutes.rounded())) min")
         } else if (snapshot.steps ?? 0) >= tracker.rules.activeDaySteps {
             parts.append("\(Format.short(snapshot.steps ?? 0)) steps")
