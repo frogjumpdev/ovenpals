@@ -1,10 +1,10 @@
 import SwiftUI
 import PetCore
 
-/// Home (v3.4): pet name, the week (Monday first, run / moon icons), the living pet on its flat
-/// oval with today's food bubbles around it (B 轻泡), the status area (Asleep, Slept or Whoop's
-/// recovery) and this
-/// week's cells, and the dock (Pets · Today · Memories, with their names).
+/// Home (v3.4): the days together (「Day 12 with Toast」, opens Diary), the week (Monday first,
+/// run / moon icons), the living pet on its flat oval with today's food bubbles around it (B 轻泡),
+/// the status area (Asleep, Slept or Whoop's recovery) and this week's cells, and the dock
+/// (Pets · Today · Diary, with their names).
 /// A tap on a bubble books it (点击 = 入账, PRD v0.2 §4.4); rows and days explain themselves with
 /// a tap; the first time, the pet shows the user around.
 struct HomeScreen: View {
@@ -23,7 +23,7 @@ struct HomeScreen: View {
     /// Where the line is on the stage: the food bubbles under it step back while it is said.
     @State private var lineFrame: CGRect = .null
     @State private var lineTask: Task<Void, Never>?
-    /// The pet switcher or the 「…」 card, popped up under its button.
+    /// The 「…」 card, popped up under its button.
     @State private var pop: HomePop?
     @State private var momentsTask: Task<Void, Never>?
     @State private var bites = 0
@@ -157,28 +157,21 @@ struct HomeScreen: View {
     /// The pet's slow condition: from the data, or the test build's override.
     private var energy: PetEnergy { home.energyOverride ?? model.energy }
 
-    // MARK: - Top: name (switch the main pet) and more
+    // MARK: - Top: the days together (opens Diary) and more
 
     private func topBar(_ pet: Pet3D) -> some View {
         HStack {
-            // the pet switcher: a small card of the pets met so far (bubble-settings-v1)
-            Button { togglePop(.pets) } label: {
-                HStack(spacing: 6) {
-                    Text(pet.name)
-                        .scaledFont(28, .bold)
-                        .foregroundStyle(Jade.ink)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(Jade.ink2)
-                        .rotationEffect(.degrees(pop == .pets ? 180 : 0))
-                }
-                .contentShape(Rectangle())
+            // 「Day 12 with Toast」 since 2026-11-26 (was the pet switcher; Pets sets the main pet):
+            // the same count as Diary's 「days together」, and a tap opens Diary
+            NavigationLink(value: Route.memories) {
+                DaysTogetherTitle(days: model.daysTogether, name: pet.name)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .background(HomeSpot.mark("name"))
-            .accessibilityLabel("Main pet: \(pet.name)")
-            .accessibilityHint("Shows your pets to pick from")
-            Spacer()
+            .accessibilityLabel("Day \(model.daysTogether) with \(pet.name)")
+            .accessibilityHint("Opens your diary")
+            Spacer(minLength: 12)
             // No feature, no entry (PRD v0.2): Settings, and the tour again (v3.4).
             Button { togglePop(.more) } label: { RoundIcon(systemName: "ellipsis") }
                 .buttonStyle(.plain)
@@ -188,7 +181,7 @@ struct HomeScreen: View {
         }
     }
 
-    private enum HomePop { case pets, more }
+    private enum HomePop { case more }
 
     private func togglePop(_ which: HomePop) {
         withAnimation(.spring(response: 0.3, dampingFraction: 0.72)) { pop = pop == which ? nil : which }
@@ -198,7 +191,7 @@ struct HomeScreen: View {
         withAnimation(.easeOut(duration: 0.18)) { pop = nil }
     }
 
-    /// The two pop-up cards: under the pet's name (the pets met so far) and under 「…」.
+    /// The pop-up card under 「…」.
     private var popOverlay: some View {
         let top = (spots["name"]?.maxY ?? 52) + 6
         return ZStack(alignment: .topLeading) {
@@ -209,21 +202,6 @@ struct HomeScreen: View {
                     .onTapGesture { closePop() }
                     .accessibilityHidden(true)
             }
-            VStack(spacing: 0) {
-                Color.clear.frame(height: top)
-                if pop == .pets {
-                    PetSwitcher(pets: model.unlockedPets, current: model.mainPet3D.id,
-                                level: { model.record($0).level }, outfit: { model.dressUp.outfit(for: $0.id) }) { pet in
-                        closePop()
-                        guard pet.id != model.mainPet3D.id else { return }
-                        model.mainPetID = pet.rosterID
-                        // 点点头: the new main pet nods once it is on the stage
-                        stage.react("nod", pet: pet.id)
-                    }
-                    .popIn(from: .top)
-                }
-            }
-            .padding(.horizontal, 12)
             VStack(alignment: .trailing, spacing: 0) {
                 Color.clear.frame(width: 1, height: top)
                 if pop == .more {
@@ -894,7 +872,7 @@ struct HomeScreen: View {
     /// -hp3dTour 1|2|3|tryit shows that tour step; -hp3dNote asleep|slept|week|day opens that note;
     /// -hp3dAskBedtime YES shows the pet's one question about the bedtime reminder;
     /// -hp3dReact <expression> plays it after 3 s (wait and gift are let go 4 s later);
-    /// -hp3dSay <line> has the pet say it after 3 s and keeps it up; -hp3dPop pets|more opens that card.
+    /// -hp3dSay <line> has the pet say it after 3 s and keeps it up; -hp3dPop more opens the 「…」 card.
     private func debugLaunch() async {
         guard stage.isReady else { return }
         let defaults = UserDefaults.standard
@@ -903,9 +881,9 @@ struct HomeScreen: View {
             say(text)
             lineTask?.cancel()
         }
-        if let which = defaults.string(forKey: "hp3dPop") {
+        if defaults.string(forKey: "hp3dPop") == "more" {
             try? await Task.sleep(for: .seconds(2))
-            togglePop(which == "more" ? .more : .pets)
+            togglePop(.more)
         }
         if let id = defaults.string(forKey: "hp3dReact") {
             try? await Task.sleep(for: .seconds(3))
@@ -1160,69 +1138,20 @@ private struct LineFrameKey: PreferenceKey {
     }
 }
 
-/// The pets met so far, four to a row: each on a small round plate with its name and level; the
-/// main pet has a jade ring and a check. Up to twelve show whole; more scroll inside the card,
-/// the next row peeking under a fade.
-private struct PetSwitcher: View {
-    let pets: [Pet3D]
-    let current: String
-    let level: (Pet3D) -> Int
-    let outfit: (Pet3D) -> [String]
-    let pick: (Pet3D) -> Void
+/// 「Day 12 with Toast」 at the top of home: the days together as big as a page title, the main
+/// pet's name after it in small grey, on one line (2026-11-26, A in design/days-together-options.png).
+/// Both sizes follow the system text size; a long name shrinks the line rather than cutting it.
+private struct DaysTogetherTitle: View {
+    let days: Int
+    let name: String
+    @ScaledMetric(relativeTo: .body) private var big: CGFloat = 28
+    @ScaledMetric(relativeTo: .body) private var small: CGFloat = 17
 
     var body: some View {
-        Group {
-            if pets.count > 12 {
-                ScrollView { grid }
-                    .scrollIndicators(.hidden)
-                    .frame(height: 400)
-                    .mask(LinearGradient(stops: [.init(color: .black, location: 0.82), .init(color: .black.opacity(0.25), location: 1)],
-                                         startPoint: .top, endPoint: .bottom))
-            } else {
-                grid
-            }
-        }
-        .popCard()
-    }
-
-    private var grid: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 4), spacing: 2) {
-            ForEach(pets) { pet in
-                Button { pick(pet) } label: { cell(pet) }
-                    .buttonStyle(PopRowPress())
-                    .accessibilityLabel("\(pet.name), level \(level(pet))")
-                    .accessibilityAddTraits(pet.id == current ? .isSelected : [])
-            }
-        }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 6)
-    }
-
-    private func cell(_ pet: Pet3D) -> some View {
-        let picked = pet.id == current
-        return VStack(spacing: 4) {
-            ZStack {
-                Circle().fill(Jade.fill).padding(3)
-                PetPicture(pet: pet, decor: outfit(pet))
-                    .frame(width: 46, height: 46)
-            }
-            .frame(width: 62, height: 62)
-            .overlay(Circle().strokeBorder(Jade.accent, lineWidth: 2.5).opacity(picked ? 1 : 0))
-            .overlay(alignment: .topTrailing) {
-                if picked { CheckBadge(size: 20).offset(x: 2, y: -2) }
-            }
-            Text(pet.name)
-                .scaledFont(12.5, .bold)
-                .foregroundStyle(Jade.ink)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-            Text("Lv \(level(pet))")
-                .scaledFont(10.5, .bold)
-                .foregroundStyle(Jade.ink2)
-        }
-        .padding(.top, 6)
-        .padding(.bottom, 8)
-        .frame(maxWidth: .infinity)
-        .contentShape(Rectangle())
+        (Text("Day \(days)").font(.rounded(big, .bold)).foregroundStyle(Jade.ink)
+            + Text(" with \(name)").font(.rounded(small, .bold)).foregroundStyle(Jade.ink2))
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
     }
 }
