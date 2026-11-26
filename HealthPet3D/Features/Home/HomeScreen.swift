@@ -879,10 +879,7 @@ struct HomeScreen: View {
             NavigationLink(value: Route.memories) {
                 // named Diary since 2026-11-26 (was Memories); the route and spot keep the old name
                 DockItem(name: "Diary") {
-                    Image(systemName: "book.closed")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(Jade.ink)
-                        .frame(width: 22, height: 22)
+                    DiaryIcon(size: 22)
                 }
                 .pulse(memoriesPulse, amount: 1.1)
                 .background(HomeSpot.mark("memories"))
@@ -974,7 +971,7 @@ private struct TodayBars: Shape {
 }
 
 /// A dock button: one circle with the icon above its name inside. The circle grows with the
-/// system text size (72 pt at the default size), so the longest name, Memories, always fits.
+/// system text size (72 pt at the default size), so every name fits.
 private struct DockItem<Icon: View>: View {
     let name: String
     var primary = false

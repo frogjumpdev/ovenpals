@@ -165,6 +165,67 @@ struct PetFaceIcon: View {
     }
 }
 
+/// The Diary button's icon (2026-11-26, option A): a little notebook that smiles. A cover with
+/// its spine on the left, two eyes and a smile on it, drawn like PetFaceIcon (round 2 pt lines,
+/// one colour), so the two read as one family.
+struct DiaryIcon: View {
+    var size: CGFloat = 22
+    var color: Color = Jade.ink
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 3.8 / 24, style: .continuous)
+                .stroke(color, lineWidth: size * 2.1 / 24)
+                .frame(width: size * 15.2 / 24, height: size * 18 / 24)
+            DiarySpine().stroke(color, style: StrokeStyle(lineWidth: size * 2.1 / 24, lineCap: .round))
+            DiaryEyes().fill(color)
+            DiarySmile().stroke(color, style: StrokeStyle(lineWidth: size * 1.8 / 24, lineCap: .round))
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+/// Points on a 24 × 24 grid, scaled into `rect` (the grid the icon was drawn on).
+private func iconGrid(_ rect: CGRect) -> (CGFloat, CGFloat) -> CGPoint {
+    let s = min(rect.width, rect.height) / 24
+    return { x, y in CGPoint(x: rect.minX + x * s, y: rect.minY + y * s) }
+}
+
+/// The spine: one line down the cover, near its left edge.
+private struct DiarySpine: Shape {
+    func path(in rect: CGRect) -> Path {
+        let p = iconGrid(rect)
+        var path = Path()
+        path.move(to: p(8.4, 3.6)); path.addLine(to: p(8.4, 20.4))
+        return path
+    }
+}
+
+/// Two upright eyes, the same shape as PetFaceIcon's and about as far apart, centred on the cover
+/// right of the spine.
+private struct DiaryEyes: Shape {
+    func path(in rect: CGRect) -> Path {
+        let s = min(rect.width, rect.height) / 24
+        var path = Path()
+        for x in [10.8, 15.2] {
+            path.addRoundedRect(in: CGRect(x: rect.minX + x * s, y: rect.minY + 9.1 * s, width: 2.1 * s, height: 3.5 * s),
+                                cornerSize: CGSize(width: 1.05 * s, height: 1.05 * s))
+        }
+        return path
+    }
+}
+
+/// A smile under the eyes, curved enough to read as one at 22 pt.
+private struct DiarySmile: Shape {
+    func path(in rect: CGRect) -> Path {
+        let p = iconGrid(rect)
+        var path = Path()
+        path.move(to: p(12.3, 15.1))
+        path.addQuadCurve(to: p(15.8, 15.1), control: p(14.05, 17.7))
+        return path
+    }
+}
+
 /// Page background + side gutters, shared by the inner pages.
 struct PageScroll<Content: View>: View {
     @ViewBuilder var content: () -> Content
