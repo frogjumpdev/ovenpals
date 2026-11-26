@@ -15,7 +15,7 @@
 
 ```
 xcodebuild -project HealthPet.xcodeproj -scheme HealthPet3D \
-  -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.0' \
+  -destination 'platform=iOS Simulator,name=iPhone 18 Pro' \
   CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build
 ```
 
@@ -389,6 +389,15 @@ App 优先照顾 WHOOP 用户。之后又按这个原则改了两处（2026-11-2
   19:10 睡 25 分钟、凌晨 2 点才睡的一晚原本会被判准时。现在间隔不到 2 小时的片段算同一觉，睡得最久的那一觉是这一晚的
   主睡眠，它之前睡着不到 90 分钟的那一觉是小睡，不算入睡时间（时长照算）。半夜醒来一个多小时、或者先睡了 90 分钟以上
   再醒很久，入睡还是第一次睡着的时间。接了 Whoop 的用户，入睡时间本来就用 Whoop 自己的主睡眠（服务器去掉了小睡），两边一致。
+
+## 主页底栏：三个一样大的圆（2026-11-26）
+
+- Pets · Today · Memories 还是圆按钮，但三个一样大（72 pt），名字从圆下面的小灰字搬进圆里：图标在上、名字在下，
+  11 pt 深色。Today 只靠颜色突出（白天深绿底青柠，夜里青柠底深色），不再比另外两个大。
+- 圆跟着系统字号长（主页最多放大两档，到时约 89 pt），最长的 Memories 也放得进圆里。
+- Pets 的小绿点贴着圆的右上方，圆变大时跟着走；收获时飞到 Memories 的小点按新位置算。
+- 导览第 3 步的高亮框改成四边一样宽地围住三个按钮。原来上面多出 36 pt、压到 This week 那一行，左右还超出屏幕。
+- 对比图在项目文件 design/dock-equal-circles.png（C 方案）。
 
 ## 还没做
 

@@ -95,9 +95,9 @@ struct HomeScreen: View {
                 .padding(.horizontal, 44)
                 .background(HomeSpot.mark("status"))
             dock
+                .background(HomeSpot.mark("dock"))   // the buttons only, without the padding
                 .padding(.top, 26)
                 .padding(.bottom, 2)
-                .background(HomeSpot.mark("dock"))
         }
         // the layout is tight: text grows with the system size, but at most two steps (PRD v0.3 §8.2)
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
@@ -617,8 +617,8 @@ struct HomeScreen: View {
         case .records:
             return spots["status"]?.insetBy(dx: 18, dy: -14)
         case .dock:
-            guard let dock = spots["dock"], let scene = spots["scene"] else { return nil }
-            return CGRect(x: scene.minX - 8, y: dock.minY - 10, width: scene.width + 16, height: dock.height + 16)
+            // the same margin all round the three buttons, so it stays off the This week row above
+            return spots["dock"]?.insetBy(dx: -16, dy: -12)
         case .tryIt:
             return nil
         }
@@ -854,43 +854,37 @@ struct HomeScreen: View {
         }
     }
 
-    // MARK: - Dock: three icons with their names (v3.4)
+    // MARK: - Dock: three circles of one size, the icon above its name inside (2026-11-26)
 
+    /// Pets · Today · Memories as three circles of one size, each name inside its circle under the
+    /// icon, so a name reads as part of what it opens. Today stands out by colour only (forest by
+    /// day, lime at night), never by size.
     private var dock: some View {
-        HStack(alignment: .bottom, spacing: 34) {
+        HStack(alignment: .bottom, spacing: 30) {
             NavigationLink(value: Route.pets) {
-                DockItem(name: "Pets") {
-                    RoundSurface(size: 50) { PetFaceIcon(size: 24) }
-                        .overlay(alignment: .topTrailing) {
-                            // a new pet, or enough points for a draw (PRD v0.3 §5.4)
-                            if home.hasUnseen(model.unlockedPets) || model.dressUp.canDraw {
-                                Circle().fill(Jade.accent).frame(width: 7, height: 7).offset(x: 2, y: -2)
-                            }
-                        }
+                // the dot: a new pet, or enough points for a draw (PRD v0.3 §5.4)
+                DockItem(name: "Pets", dot: home.hasUnseen(model.unlockedPets) || model.dressUp.canDraw) {
+                    PetFaceIcon(size: 22)
                 }
             }
             NavigationLink(value: Route.today) {
-                DockItem(name: "Today") {
+                DockItem(name: "Today", primary: true) {
                     // C 三根小柱 (decided 2026-11-10): Today is where the numbers are, not a
                     // check-in button, so no check mark. VoiceOver still reads "Today".
                     TodayBars()
-                        .stroke(Jade.onPrimary, style: StrokeStyle(lineWidth: 3.4, lineCap: .round))
-                        .frame(width: 24, height: 24)
-                        .frame(width: 66, height: 66)
-                        .background(Circle().fill(Jade.primary))
-                        .softShadow(2.2)
+                        .stroke(Jade.onPrimary, style: StrokeStyle(lineWidth: 3.2, lineCap: .round))
+                        .frame(width: 22, height: 22)
                 }
             }
             NavigationLink(value: Route.memories) {
                 DockItem(name: "Memories") {
-                    RoundSurface(size: 50) {
-                        Image(systemName: "photo")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(Jade.ink)
-                    }
-                    .pulse(memoriesPulse, amount: 1.14)
-                    .background(HomeSpot.mark("memories"))
+                    Image(systemName: "photo")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Jade.ink)
+                        .frame(width: 22, height: 22)
                 }
+                .pulse(memoriesPulse, amount: 1.1)
+                .background(HomeSpot.mark("memories"))
             }
         }
         .buttonStyle(.plain)
@@ -978,20 +972,37 @@ private struct TodayBars: Shape {
     }
 }
 
-/// A dock button and its name underneath (11 pt, the secondary grey like every label).
+/// A dock button: one circle with the icon above its name inside. The circle grows with the
+/// system text size (72 pt at the default size), so the longest name, Memories, always fits.
 private struct DockItem<Icon: View>: View {
     let name: String
+    var primary = false
+    /// A small green dot just outside the circle's top-right edge.
+    var dot = false
     @ViewBuilder var icon: () -> Icon
+    @ScaledMetric(relativeTo: .body) private var diameter: CGFloat = 72
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 2) {
             icon()
             Text(name)
                 .scaledFont(11, .heavy)
-                .foregroundStyle(Jade.ink2)
+                .foregroundStyle(primary ? Jade.onPrimary : Jade.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
         }
-        .frame(minWidth: 66)
-        .contentShape(Rectangle())
+        .padding(.top, 2)
+        .frame(width: diameter, height: diameter)
+        .background(Circle().fill(primary ? Jade.primary : Jade.card))
+        .softShadow(primary ? 1.6 : 0.6)
+        .overlay(alignment: .topTrailing) {
+            if dot {
+                // follows the rim at 45°, so the gap stays the same when the circle grows
+                let inset = diameter * (1 - CGFloat(0.5).squareRoot()) / 2 - 7.5
+                Circle().fill(Jade.accent).frame(width: 8, height: 8).offset(x: -inset, y: inset)
+            }
+        }
+        .contentShape(Circle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(name)
         .accessibilityAddTraits(.isButton)
