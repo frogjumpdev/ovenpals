@@ -179,7 +179,7 @@ struct DiaryIcon: View {
                 .frame(width: size * 15.2 / 24, height: size * 18 / 24)
             DiarySpine().stroke(color, style: StrokeStyle(lineWidth: size * 2.1 / 24, lineCap: .round))
             DiaryEyes().fill(color)
-            DiarySmile().stroke(color, style: StrokeStyle(lineWidth: size * 1.7 / 24, lineCap: .round))
+            DiarySmile().stroke(color, style: StrokeStyle(lineWidth: size * 1.8 / 24, lineCap: .round))
         }
         .frame(width: size, height: size)
     }
@@ -201,26 +201,27 @@ private struct DiarySpine: Shape {
     }
 }
 
-/// Two upright eyes, the same shape as PetFaceIcon's, centred on the cover right of the spine.
+/// Two upright eyes, the same shape as PetFaceIcon's and about as far apart, centred on the cover
+/// right of the spine.
 private struct DiaryEyes: Shape {
     func path(in rect: CGRect) -> Path {
         let s = min(rect.width, rect.height) / 24
         var path = Path()
-        for x in [11.1, 15.1] {
-            path.addRoundedRect(in: CGRect(x: rect.minX + x * s, y: rect.minY + 9.3 * s, width: 2.1 * s, height: 3.5 * s),
+        for x in [10.8, 15.2] {
+            path.addRoundedRect(in: CGRect(x: rect.minX + x * s, y: rect.minY + 9.1 * s, width: 2.1 * s, height: 3.5 * s),
                                 cornerSize: CGSize(width: 1.05 * s, height: 1.05 * s))
         }
         return path
     }
 }
 
-/// A small smile under the eyes.
+/// A smile under the eyes, curved enough to read as one at 22 pt.
 private struct DiarySmile: Shape {
     func path(in rect: CGRect) -> Path {
         let p = iconGrid(rect)
         var path = Path()
-        path.move(to: p(12.4, 15.4))
-        path.addQuadCurve(to: p(15.9, 15.4), control: p(14.15, 16.9))
+        path.move(to: p(12.3, 15.1))
+        path.addQuadCurve(to: p(15.8, 15.1), control: p(14.05, 17.7))
         return path
     }
 }
