@@ -854,19 +854,19 @@ struct HomeScreen: View {
         }
     }
 
-    // MARK: - Dock: three equal tiles, the icon above its name (2026-11-26)
+    // MARK: - Dock: three circles of one size, the icon above its name inside (2026-11-26)
 
-    /// Pets · Today · Memories as three tiles of one size: each name sits under its icon inside the
-    /// button, so a name reads as part of what it opens. Today stands out by colour only (forest by
+    /// Pets · Today · Memories as three circles of one size, each name inside its circle under the
+    /// icon, so a name reads as part of what it opens. Today stands out by colour only (forest by
     /// day, lime at night), never by size.
     private var dock: some View {
-        HStack(spacing: 14) {
+        HStack(alignment: .bottom, spacing: 30) {
             NavigationLink(value: Route.pets) {
-                DockItem(name: "Pets") { PetFaceIcon(size: 24) }
+                DockItem(name: "Pets") { PetFaceIcon(size: 22) }
                     .overlay(alignment: .topTrailing) {
                         // a new pet, or enough points for a draw (PRD v0.3 §5.4)
                         if home.hasUnseen(model.unlockedPets) || model.dressUp.canDraw {
-                            Circle().fill(Jade.accent).frame(width: 8, height: 8).padding(9)
+                            Circle().fill(Jade.accent).frame(width: 8, height: 8).offset(x: -3, y: 3)
                         }
                     }
             }
@@ -875,24 +875,21 @@ struct HomeScreen: View {
                     // C 三根小柱 (decided 2026-11-10): Today is where the numbers are, not a
                     // check-in button, so no check mark. VoiceOver still reads "Today".
                     TodayBars()
-                        .stroke(Jade.onPrimary, style: StrokeStyle(lineWidth: 3.4, lineCap: .round))
-                        .frame(width: 24, height: 24)
+                        .stroke(Jade.onPrimary, style: StrokeStyle(lineWidth: 3.2, lineCap: .round))
+                        .frame(width: 22, height: 22)
                 }
             }
             NavigationLink(value: Route.memories) {
                 DockItem(name: "Memories") {
                     Image(systemName: "photo")
-                        .font(.system(size: 19, weight: .semibold))
+                        .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(Jade.ink)
-                        .frame(width: 24, height: 24)
+                        .frame(width: 22, height: 22)
                 }
-                .pulse(memoriesPulse, amount: 1.08)
+                .pulse(memoriesPulse, amount: 1.1)
                 .background(HomeSpot.mark("memories"))
             }
         }
-        // one height for all three, even when a name grows with the system text size
-        .fixedSize(horizontal: false, vertical: true)
-        .padding(.horizontal, Metrics.gutter)
         .buttonStyle(.plain)
     }
 
@@ -978,28 +975,28 @@ private struct TodayBars: Shape {
     }
 }
 
-/// A dock tile: the icon above its name, both inside one rounded tile of a fixed size.
+/// A dock button: one circle with the icon above its name inside. The circle grows with the
+/// system text size (72 pt at the default size), so the longest name, Memories, always fits.
 private struct DockItem<Icon: View>: View {
     let name: String
     var primary = false
     @ViewBuilder var icon: () -> Icon
+    @ScaledMetric(relativeTo: .body) private var diameter: CGFloat = 72
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 2) {
             icon()
             Text(name)
-                .scaledFont(13, .heavy)
+                .scaledFont(11, .heavy)
                 .foregroundStyle(primary ? Jade.onPrimary : Jade.ink)
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
+                .minimumScaleFactor(0.85)
         }
-        .padding(.vertical, 10)
-        .frame(maxWidth: 104, minHeight: 64)
-        .frame(maxHeight: .infinity)
-        .background(RoundedRectangle(cornerRadius: Metrics.tile, style: .continuous)
-            .fill(primary ? Jade.primary : Jade.card))
+        .padding(.top, 2)
+        .frame(width: diameter, height: diameter)
+        .background(Circle().fill(primary ? Jade.primary : Jade.card))
         .softShadow(primary ? 1.6 : 0.6)
-        .contentShape(RoundedRectangle(cornerRadius: Metrics.tile, style: .continuous))
+        .contentShape(Circle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(name)
         .accessibilityAddTraits(.isButton)

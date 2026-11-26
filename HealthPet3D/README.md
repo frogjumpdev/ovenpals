@@ -15,7 +15,7 @@
 
 ```
 xcodebuild -project HealthPet.xcodeproj -scheme HealthPet3D \
-  -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.0' \
+  -destination 'platform=iOS Simulator,name=iPhone 18 Pro' \
   CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build
 ```
 
@@ -390,13 +390,13 @@ App 优先照顾 WHOOP 用户。之后又按这个原则改了两处（2026-11-2
   主睡眠，它之前睡着不到 90 分钟的那一觉是小睡，不算入睡时间（时长照算）。半夜醒来一个多小时、或者先睡了 90 分钟以上
   再醒很久，入睡还是第一次睡着的时间。接了 Whoop 的用户，入睡时间本来就用 Whoop 自己的主睡眠（服务器去掉了小睡），两边一致。
 
-## 主页底栏：三块一样大（2026-11-26）
+## 主页底栏：三个一样大的圆（2026-11-26）
 
-- Pets · Today · Memories 从「圆按钮 + 下面一行小灰字」改成三块一样大的圆角块（100 × 64 pt，圆角 22），
-  图标在上、名字在下，名字 13 pt 深色，放在按钮里面。Today 只靠颜色突出（白天深绿底青柠，夜里青柠底深色），不再比另外两个大。
-- 系统字号放大到主页允许的两档时，名字跟着变大，三块一起变高，宽度不超过 104 pt，仍在左右 16 pt 边距里。
-- Pets 的小绿点在块的右上角；收获时飞到 Memories 的小点、导览第 3 步的高亮框都跟着新位置，不用另改。
-- 对比图在项目文件 design/dock-equal-size.png（A 方案）。
+- Pets · Today · Memories 还是圆按钮，但三个一样大（72 pt），名字从圆下面的小灰字搬进圆里：图标在上、名字在下，
+  11 pt 深色。Today 只靠颜色突出（白天深绿底青柠，夜里青柠底深色），不再比另外两个大。
+- 圆跟着系统字号长（主页最多放大两档，到时约 89 pt），最长的 Memories 也放得进圆里。
+- Pets 的小绿点在圆的右上方；收获时飞到 Memories 的小点、导览第 3 步的高亮框都按新位置算，不用另改。
+- 对比图在项目文件 design/dock-equal-circles.png（C 方案）。
 
 ## 还没做
 
