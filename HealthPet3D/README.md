@@ -400,6 +400,8 @@ App 优先照顾 WHOOP 用户。之后又按这个原则改了两处（2026-11-2
 - 对比图在项目文件 design/dock-equal-circles.png（C 方案）。
 - 状态区下面本周那一行的标签从「This week」改成一个词「Week」，和 Asleep、Slept / Rest 左对齐在同一列，不再往左探出去。
   点开的说明小卡标题、Today 页和 VoiceOver 还是说 This week（那里地方够）。
+- Memories 改名 Diary：底栏、页面标题和导览第 3 步那句一起改，底栏图标从照片换成一本合上的书（`book.closed`）。
+  代码里的路由、高亮位置和音效还叫 memories，没动。
 
 ## 还没做
 

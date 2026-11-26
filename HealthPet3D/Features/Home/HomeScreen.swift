@@ -877,8 +877,9 @@ struct HomeScreen: View {
                 }
             }
             NavigationLink(value: Route.memories) {
-                DockItem(name: "Memories") {
-                    Image(systemName: "photo")
+                // named Diary since 2026-11-26 (was Memories); the route and spot keep the old name
+                DockItem(name: "Diary") {
+                    Image(systemName: "book.closed")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(Jade.ink)
                         .frame(width: 22, height: 22)

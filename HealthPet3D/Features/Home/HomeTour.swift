@@ -12,7 +12,7 @@ enum TourStep: Int, CaseIterable {
         switch self {
         case .bubbles: "Today’s snacks. Your walks, workouts and sleep grow them. Tap one and I’ll eat it."
         case .records: "Where it goes: last night’s bedtime, \(whoop ? "how rested you are" : "how long you slept"), and this week’s tally. 3 workouts + 5 early nights make a disciplined week."
-        case .dock: "Pets keeps everyone you’ve met. Today has the numbers. Memories keeps what you’ve earned."
+        case .dock: "Pets keeps everyone you’ve met. Today has the numbers. Diary keeps what you’ve earned."
         case .tryIt: ""
         }
     }

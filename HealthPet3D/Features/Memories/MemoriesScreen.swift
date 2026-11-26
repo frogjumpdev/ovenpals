@@ -12,7 +12,7 @@ struct MemoriesScreen: View {
     var body: some View {
         let entries = model.ledger
         PageScroll {
-            PageHeader(title: "Memories", count: entries.isEmpty ? nil : "\(entries.count)")
+            PageHeader(title: "Diary", count: entries.isEmpty ? nil : "\(entries.count)")
                 .padding(.bottom, 4)
             HStack(spacing: 14) {
                 PetPicture(pet: model.mainPet3D, happy: true).frame(width: 52, height: 52)
