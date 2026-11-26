@@ -181,12 +181,15 @@ struct WeekRow: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            Text("This week")
+            // one word like Asleep and Slept, in their column under them (2026-11-26; was "This week")
+            Color.clear.frame(width: StatusGrid.icon, height: 1)
+            Text("Week")
                 .scaledFont(11, .heavy)
                 .foregroundStyle(Jade.ink2)
                 .lineLimit(1)
-                .fixedSize()
-                .frame(width: StatusGrid.lead, alignment: .trailing)
+                .minimumScaleFactor(0.8)
+                .frame(width: StatusGrid.label, alignment: .leading)
+                .padding(.leading, 12)
             HStack(spacing: 4) {
                 Image(systemName: "figure.run").font(.system(size: 11, weight: .bold)).foregroundStyle(Jade.ink2)
                 CellRow(cells: cells.workoutRow, color: Jade.accent, pulses: workoutPulses)
