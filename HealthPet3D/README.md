@@ -407,7 +407,8 @@ App 优先照顾 WHOOP 用户。之后又按这个原则改了两处（2026-11-2
 - 主页左上角的「Toast ⌄」换宠物按钮拿掉了（Pets 里点宠物、Set as main 一样能换），改成「Day 12 with Toast」：
   天数用原来标题的 28 pt 粗体，后面跟 17 pt 灰色的「with 主宠名字」，一行读成一句话。天数和 Diary 顶上的
   「days together」是同一个数（从第一次打开 App 那天算，第一天是 Day 1），名字跟着当前主宠。整块点一下打开 Diary。
-  名字很长或字号放大时整行一起缩小，不截断。四种排法的对比图在项目文件 design/days-together-options.png（选的 A）。
+  名字很长或字号放大时整行一起缩小，不截断。数字不用等宽（等宽时「12」中间空一大块），Diary 顶上的大数字也一样改了。
+  四种排法的对比图在项目文件 design/days-together-options.png（选的 A）。
 
 ## 还没做
 

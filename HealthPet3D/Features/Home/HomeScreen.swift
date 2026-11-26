@@ -1141,6 +1141,7 @@ private struct LineFrameKey: PreferenceKey {
 /// 「Day 12 with Toast」 at the top of home: the days together as big as a page title, the main
 /// pet's name after it in small grey, on one line (2026-11-26, A in design/days-together-options.png).
 /// Both sizes follow the system text size; a long name shrinks the line rather than cutting it.
+/// Digits keep their own widths: equal-width ones leave a gap in 「12」 at this size.
 private struct DaysTogetherTitle: View {
     let days: Int
     let name: String
@@ -1150,7 +1151,6 @@ private struct DaysTogetherTitle: View {
     var body: some View {
         (Text("Day \(days)").font(.rounded(big, .bold)).foregroundStyle(Jade.ink)
             + Text(" with \(name)").font(.rounded(small, .bold)).foregroundStyle(Jade.ink2))
-            .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(0.6)
     }

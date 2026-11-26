@@ -17,7 +17,7 @@ struct MemoriesScreen: View {
             HStack(spacing: 14) {
                 PetPicture(pet: model.mainPet3D, happy: true).frame(width: 52, height: 52)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("\(model.daysTogether)").scaledFont(28, .bold).foregroundStyle(Jade.ink).monospacedDigit()
+                    Text("\(model.daysTogether)").scaledFont(28, .bold).foregroundStyle(Jade.ink)
                     Label(model.daysTogether == 1 ? "day together" : "days together", systemImage: "heart")
                         .scaledFont(13, .semibold)
                         .foregroundStyle(Jade.ink2)
