@@ -2,7 +2,7 @@ import XCTest
 @testable import PetCore
 
 /// The capsule machine's rules (PRD v0.5 §5.4, 2026-11-27; design v5): coins, three capsules,
-/// gold capsules and their pity, wish coins, the first visit to Dress up, iCloud merges.
+/// wish coins, the first visit to Dress up, iCloud merges. (No gold capsules: dropped 2026-11-27.)
 final class CapsuleMachineTests: XCTestCase {
     private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
     private func at(_ minutes: Double) -> Date { t0.addingTimeInterval(minutes * 60) }
@@ -15,12 +15,10 @@ final class CapsuleMachineTests: XCTestCase {
         d.welcomeGiven = true
         d.owned = [Decor.welcomeGift]
         for n in 0..<coins { d.coinLog["gift/x\(n)"] = t0 }
-        let earlier = ids.filter { $0 != Decor.welcomeGift }
-        if !earlier.isEmpty {
-            d.owned += earlier
-            d.spins["earlier"] = MachineSpin(id: "earlier", at: t0.addingTimeInterval(-86_400), items: earlier,
-                                      goldPossible: false, goldShown: false, welcome: false)
-            for n in 0..<DressUp.spinCost { d.coinLog["gift/e\(n)"] = t0 }
+        for (i, id) in ids.enumerated() where id != Decor.welcomeGift {
+            d.owned.append(id)
+            d.spins["earlier\(i)"] = MachineSpin(id: "earlier\(i)", at: t0.addingTimeInterval(-86_400 + Double(i)), item: id, welcome: false)
+            for n in 0..<DressUp.spinCost { d.coinLog["gift/e\(i)-\(n)"] = t0 }
         }
         return d
     }
@@ -104,12 +102,10 @@ final class CapsuleMachineTests: XCTestCase {
         XCTAssertNil(d.pick(3, at: at(2)))
         XCTAssertEqual(d.offer, offer, "a wrong index keeps the capsules")
         let gain = d.pick(1, at: at(2))!
-        XCTAssertEqual(gain.items.first, offer.capsules[1].item)
+        XCTAssertEqual(gain.item, offer.capsules[1].item)
         XCTAssertTrue(d.owns(offer.capsules[1].item))
         XCTAssertTrue(d.fresh.contains(offer.capsules[1].item), "a dot until worn")
-        for i in [0, 2] where !offer.capsules[1].items.contains(offer.capsules[i].item) {
-            XCTAssertFalse(d.owns(offer.capsules[i].item), "the other two go back")
-        }
+        for i in [0, 2] { XCTAssertFalse(d.owns(offer.capsules[i].item), "the other two go back") }
         XCTAssertNil(d.offer)
         XCTAssertEqual(d.spins.count, 1)
         XCTAssertEqual(d.coins, 4)
@@ -129,15 +125,16 @@ final class CapsuleMachineTests: XCTestCase {
         while let offer = d.spin(using: &generator, at: at(Double(turns))) {
             if d.itemsLeft >= 3 { XCTAssertEqual(offer.capsules.count, 3) }
             XCTAssertEqual(offer.capsules.count, min(3, d.itemsLeft))
-            if d.itemsLeft < 4 { XCTAssertFalse(offer.goldPossible, "no gold with fewer than four left") }
             let before = d.owned.count
             let gain = d.pick(Int.random(in: 0..<offer.capsules.count, using: &generator), at: at(Double(turns)))!
-            XCTAssertEqual(d.owned.count, before + gain.items.count)
+            XCTAssertEqual(d.owned.count, before + 1)
+            XCTAssertTrue(offer.capsules.map(\.item).contains(gain.item))
             turns += 1
         }
         XCTAssertTrue(d.allCollected)
         XCTAssertEqual(d.owned.count, 51)
         XCTAssertEqual(Set(d.owned).count, 51)
+        XCTAssertEqual(turns, 50, "one item a turn, the party hat was already there")
         XCTAssertEqual(d.coins, 3 * 60 - 3 * turns, "the rest wait for new decorations")
         XCTAssertGreaterThan(d.coins, 0)
         XCTAssertEqual(d.spinsLeft, 0)
@@ -150,8 +147,6 @@ final class CapsuleMachineTests: XCTestCase {
         var generator = SplitMix(seed: 4)
         var offer = d.spin(using: &generator)!
         XCTAssertEqual(offer.capsules.count, 3)
-        XCTAssertFalse(offer.goldPossible)
-        XCTAssertFalse(offer.hasGold)
         d.pick(0)
         offer = d.spin(using: &generator)!
         XCTAssertEqual(offer.capsules.count, 2)
@@ -161,63 +156,6 @@ final class CapsuleMachineTests: XCTestCase {
         let gain = d.pick(0)!
         XCTAssertTrue(gain.completedAll)
         XCTAssertNil(d.spin(using: &generator))
-    }
-
-    // MARK: - Gold
-
-    func testGoldAboutOneInSixNeverMoreThanSevenMissesAndTwoItems() {
-        var golds = 0, turns = 0, longest = 0
-        for seed in 0..<300 {
-            var d = ready(coins: 3 * 12)
-            var generator = SplitMix(seed: UInt64(seed) &+ 1000)
-            var misses = 0
-            for i in 0..<12 {
-                guard let offer = d.spin(using: &generator, at: at(Double(i))) else { break }
-                XCTAssertTrue(offer.goldPossible)
-                turns += 1
-                let gold = offer.capsules.firstIndex(where: \.isGold)
-                XCTAssertLessThanOrEqual(offer.capsules.filter(\.isGold).count, 1)
-                if let gold {
-                    golds += 1
-                    misses = 0
-                    let capsule = offer.capsules[gold]
-                    let bonus = capsule.bonus!
-                    XCTAssertFalse(offer.capsules.map(\.item).contains(bonus), "the second item is none of the three")
-                    XCTAssertFalse(d.owns(bonus))
-                    XCTAssertNotEqual(Decor.with(id: bonus)?.slot, Decor.with(id: capsule.item)?.slot,
-                                      "a different place while there is one")
-                    let gain = d.pick(gold, at: at(Double(i)))!
-                    XCTAssertEqual(gain.items, [capsule.item, bonus])
-                    XCTAssertTrue(d.owns(bonus))
-                } else {
-                    misses += 1
-                    longest = max(longest, misses)
-                    d.pick(0, at: at(Double(i)))
-                }
-                XCTAssertEqual(d.goldMisses, misses)
-            }
-        }
-        let rate = Double(golds) / Double(turns)
-        // one in six a turn plus the pity: a gold capsule every 4.6 turns on average, 0.217 a turn
-        XCTAssertEqual(rate, 0.217, accuracy: 0.025)
-        XCTAssertEqual(longest, 7, "the eighth always has one")
-    }
-
-    func testPityCountsOnlyTurnsThatCouldBeGold() {
-        var d = ready(coins: 0)
-        func spin(_ id: String, possible: Bool, gold: Bool, minute: Double) {
-            d.spins[id] = MachineSpin(id: id, at: at(minute), items: [], goldPossible: possible, goldShown: gold, welcome: false)
-        }
-        spin("a", possible: true, gold: true, minute: 0)
-        for n in 1...6 { spin("b\(n)", possible: true, gold: false, minute: Double(n)) }
-        spin("c", possible: false, gold: false, minute: 7)
-        XCTAssertEqual(d.goldMisses, 6)
-        spin("d", possible: true, gold: false, minute: 8)
-        XCTAssertEqual(d.goldMisses, 7)
-        // seven possible turns without gold: the next one has it (coins for the nine turns and one more)
-        for n in 0..<(DressUp.spinCost * (d.spins.count + 1)) { d.coinLog["gift/p\(n)"] = t0 }
-        var generator = SplitMix(seed: 5)
-        XCTAssertTrue(d.spin(using: &generator, at: at(9))!.hasGold)
     }
 
     // MARK: - Wish coins
@@ -231,7 +169,7 @@ final class CapsuleMachineTests: XCTestCase {
         XCTAssertNil(d.useWish(on: Decor.welcomeGift), "only what is not owned yet")
         XCTAssertNil(d.useWish(on: "nope"))
         let gain = d.useWish(on: "crown", at: at(3))!
-        XCTAssertEqual(gain.items, ["crown"])
+        XCTAssertEqual(gain.item, "crown")
         XCTAssertTrue(d.owns("crown"))
         XCTAssertTrue(d.fresh.contains("crown"))
         XCTAssertEqual(d.wishCoins, 1)
@@ -260,10 +198,9 @@ final class CapsuleMachineTests: XCTestCase {
         let offer = d.spin(using: &generator, at: at(12))!
         XCTAssertTrue(offer.welcome)
         XCTAssertEqual(offer.capsules, [MachineCapsule(item: Decor.welcomeGift)], "only one capsule, the party hat")
-        XCTAssertFalse(offer.goldPossible)
         XCTAssertEqual(d.coins, 1)
         let gain = d.pick(0, at: at(13))!
-        XCTAssertEqual(gain.items, [Decor.welcomeGift])
+        XCTAssertEqual(gain.item, Decor.welcomeGift)
         XCTAssertTrue(d.welcomeGiven)
         XCTAssertFalse(d.welcomePending)
         XCTAssertEqual(d.coins, 3, "two more back in Dress up")
@@ -271,7 +208,6 @@ final class CapsuleMachineTests: XCTestCase {
 
         let back = d.visit(at: at(14))
         XCTAssertEqual(back.coins.map(\.source), [.gift, .gift])
-        XCTAssertEqual(d.goldMisses, 0, "the welcome turn is not a miss")
         XCTAssertNotEqual(d.spin(using: &generator, at: at(15))?.welcome, true)
     }
 
@@ -376,7 +312,7 @@ final class CapsuleMachineTests: XCTestCase {
 
         var generator = SplitMix(seed: 9)
         phone.spin(using: &generator, at: at(1500))
-        let got = phone.pick(0, at: at(1501))!.items
+        let got = phone.pick(0, at: at(1501))!.item
 
         var a = phone
         a.merge(watchSide)
@@ -388,7 +324,7 @@ final class CapsuleMachineTests: XCTestCase {
         XCTAssertEqual(a.wishCoins, 1)
         XCTAssertEqual(b.wishCoins, 1)
         XCTAssertEqual(a.coinsEarned(on: "2026-11-28"), [.opened, .workout, .night])
-        XCTAssertTrue(b.owns(got[0]))
+        XCTAssertTrue(b.owns(got))
         XCTAssertEqual(b.spins.count, 1)
 
         // merging again changes nothing
@@ -420,9 +356,8 @@ final class CapsuleMachineTests: XCTestCase {
         let wanted = offer.capsules[0].item
         phone.owned.append(wanted)  // came in from the other iPhone meanwhile
         let gain = phone.pick(0, at: at(1))!
-        XCTAssertEqual(gain.items.count, 1)
-        XCTAssertNotEqual(gain.items[0], wanted)
-        XCTAssertEqual(Decor.with(id: gain.items[0])?.slot, Decor.with(id: wanted)?.slot, "the same place")
+        XCTAssertNotEqual(gain.item, wanted)
+        XCTAssertEqual(Decor.with(id: gain.item)?.slot, Decor.with(id: wanted)?.slot, "the same place")
         XCTAssertEqual(Set(phone.owned).count, phone.owned.count)
     }
 
@@ -446,7 +381,7 @@ final class CapsuleMachineTests: XCTestCase {
     }
 }
 
-/// SplitMix64: a small generator with good bits, so the gold rate test is about the rules.
+/// SplitMix64: a small generator with good bits.
 private struct SplitMix: RandomNumberGenerator {
     var state: UInt64
     init(seed: UInt64) { state = seed }

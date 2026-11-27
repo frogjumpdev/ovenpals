@@ -1,8 +1,9 @@
 import Foundation
 
 // The capsule machine (PRD v0.5 §5.4, 2026-11-27): coins instead of points, three coins a turn,
-// three capsules out, pick one, sometimes a gold one with two items inside, a wish coin for every
-// disciplined week, and the party hat on the first visit to Dress up instead of after the tour.
+// three capsules out, pick one, a wish coin for every disciplined week, and the party hat on the
+// first visit to Dress up instead of after the tour. (No gold capsules: the user dropped them the
+// same day.)
 //
 // Like the old points, coins are never stored as a number. What is stored is which coins came in
 // (by day and source), every turn of the machine and every wish coin used, so two iPhones that
@@ -50,19 +51,11 @@ public enum CoinSource: String, Codable, Sendable, CaseIterable {
     }
 }
 
-/// One capsule out of the machine: what is inside, and for a gold one the second item.
+/// One capsule out of the machine: the item inside (its shell shows the place).
 public struct MachineCapsule: Codable, Equatable, Sendable {
     public var item: String
-    /// The gold capsule's second item (a different place when there is one).
-    public var bonus: String?
 
-    public var isGold: Bool { bonus != nil }
-    public var items: [String] { [item] + (bonus.map { [$0] } ?? []) }
-
-    public init(item: String, bonus: String? = nil) {
-        self.item = item
-        self.bonus = bonus
-    }
+    public init(item: String) { self.item = item }
 }
 
 /// Capsules out of the machine, waiting for one to be picked. Its three coins are already spent,
@@ -72,13 +65,8 @@ public struct CapsuleOffer: Codable, Equatable, Sendable, Identifiable {
     public var at: Date
     /// Three, or two or one when fewer items are left.
     public var capsules: [MachineCapsule]
-    /// Whether this turn could have been gold (three capsules, at least four items left, not the
-    /// welcome turn): only these turns count towards the pity.
-    public var goldPossible: Bool
     /// The first visit's turn: one capsule, the party hat.
     public var welcome: Bool
-
-    public var hasGold: Bool { capsules.contains(where: \.isGold) }
 }
 
 /// One finished turn of the machine.
@@ -86,11 +74,8 @@ public struct MachineSpin: Codable, Equatable, Sendable, Identifiable {
     public var id: String
     /// When the coins went in.
     public var at: Date
-    /// What it brought: one item, two from a gold capsule.
-    public var items: [String]
-    public var goldPossible: Bool
-    /// A gold capsule was among those that came out (picked or not): the pity starts over.
-    public var goldShown: Bool
+    /// What it brought.
+    public var item: String
     public var welcome: Bool
 }
 
@@ -121,7 +106,7 @@ public struct CoinArrivals: Equatable, Sendable {
 
 /// What a turn or a wish coin brought.
 public struct DecorGain: Equatable, Sendable {
-    public var items: [String]
+    public var item: String
     /// Places that this made complete (for the Diary).
     public var completedSlots: [DecorSlot]
     /// Everything this version knows is collected now: the big celebration.
@@ -130,12 +115,6 @@ public struct DecorGain: Equatable, Sendable {
 
 extension DressUp {
     public static let spinCost = 3
-    /// One turn in six brings a gold capsule, on average.
-    public static let goldChance = 1.0 / 6.0
-    /// At most seven turns in a row without gold: the eighth has one (a suggestion in the PRD).
-    public static let goldPity = 8
-    /// Fewer than this many items left: no gold capsule.
-    static let goldNeedsLeft = 4
 
     // MARK: - Coins
 
@@ -218,7 +197,7 @@ extension DressUp {
         guard wishCoins > 0, drawPool.contains(id) else { return nil }
         let wish = WishUse(id: UUID().uuidString, item: id, at: now)
         wishes[wish.id] = wish
-        return receive([id], at: now)
+        return receive(id, at: now)
     }
 
     // MARK: - The first visit
@@ -279,19 +258,9 @@ extension DressUp {
 
     public var canSpin: Bool { offer != nil || (coins >= Self.spinCost && !drawPool.isEmpty) }
 
-    /// Turns that could have been gold since the last gold capsule, oldest to newest.
-    public var goldMisses: Int {
-        var misses = 0
-        for spin in spins.values.sorted(by: { $0.at != $1.at ? $0.at < $1.at : $0.id < $1.id }) {
-            if spin.goldShown { misses = 0 } else if spin.goldPossible { misses += 1 }
-        }
-        return misses
-    }
-
     /// Puts three coins in: out come three capsules of items not owned yet (two or one when fewer
-    /// are left). One turn in six, or the eighth after seven without, one of them is gold. The
-    /// first turn in Dress up is the party hat alone. Capsules still waiting come out again
-    /// without paying twice. Nil when there aren't enough coins or nothing is left.
+    /// are left). The first turn in Dress up is the party hat alone. Capsules still waiting come
+    /// out again without paying twice. Nil when there aren't enough coins or nothing is left.
     @discardableResult
     public mutating func spin<R: RandomNumberGenerator>(using generator: inout R, at now: Date = Date()) -> CapsuleOffer? {
         if let offer, spins[offer.id] == nil { return offer }
@@ -300,19 +269,8 @@ extension DressUp {
         let welcome = welcomePending
         let pool = welcome ? [Decor.welcomeGift] : drawPool
         guard !pool.isEmpty else { return nil }
-        let picked = Array(pool.shuffled(using: &generator).prefix(3))
-        let goldPossible = !welcome && picked.count == 3 && pool.count >= Self.goldNeedsLeft
-        var capsules = picked.map { MachineCapsule(item: $0) }
-        if goldPossible,
-           goldMisses >= Self.goldPity - 1 || Double.random(in: 0..<1, using: &generator) < Self.goldChance {
-            let gold = Int.random(in: 0..<capsules.count, using: &generator)
-            let rest = pool.filter { !picked.contains($0) }
-            let slot = Decor.with(id: capsules[gold].item)?.slot
-            let elsewhere = rest.filter { Decor.with(id: $0)?.slot != slot }
-            capsules[gold].bonus = (elsewhere.isEmpty ? rest : elsewhere).randomElement(using: &generator)
-        }
-        let made = CapsuleOffer(id: Self.id(using: &generator), at: now, capsules: capsules,
-                                goldPossible: goldPossible, welcome: welcome)
+        let capsules = pool.shuffled(using: &generator).prefix(3).map { MachineCapsule(item: $0) }
+        let made = CapsuleOffer(id: Self.id(using: &generator), at: now, capsules: capsules, welcome: welcome)
         offer = made
         return made
     }
@@ -322,8 +280,8 @@ extension DressUp {
         return spin(using: &generator, at: now)
     }
 
-    /// Opens the capsule at `index`; the others go back into the machine. Everything it holds is
-    /// the user's, new (a dot until worn). After the party hat's turn two more coins come.
+    /// Opens the capsule at `index`; the others go back into the machine. What it holds is the
+    /// user's, new (a dot until worn). After the party hat's turn two more coins come.
     @discardableResult
     public mutating func pick(_ index: Int, at now: Date = Date()) -> DecorGain? {
         guard let offer else { return nil }
@@ -332,51 +290,50 @@ extension DressUp {
             return nil
         }
         guard offer.capsules.indices.contains(index) else { return nil }
-        // another iPhone may have brought one of these in meanwhile: still one not owned yet
-        var items: [String] = []
-        for id in offer.capsules[index].items {
-            if !owned.contains(id), !items.contains(id) { items.append(id); continue }
-            let pool = drawPool.filter { !items.contains($0) }
-            let slot = Decor.with(id: id)?.slot
-            if let stand = pool.first(where: { Decor.with(id: $0)?.slot == slot }) ?? pool.first {
-                items.append(stand)
+        // another iPhone may have brought it in meanwhile: still one not owned yet, of the same place
+        var item = offer.capsules[index].item
+        if owned.contains(item) {
+            let slot = Decor.with(id: item)?.slot
+            guard let stand = drawPool.first(where: { Decor.with(id: $0)?.slot == slot }) ?? drawPool.first else {
+                self.offer = nil
+                return nil
             }
+            item = stand
         }
-        spins[offer.id] = MachineSpin(id: offer.id, at: offer.at, items: items, goldPossible: offer.goldPossible,
-                               goldShown: offer.hasGold, welcome: offer.welcome)
+        spins[offer.id] = MachineSpin(id: offer.id, at: offer.at, item: item, welcome: offer.welcome)
         self.offer = nil
         if offer.welcome {
             welcomeGiven = true
             for n in 4...5 where coinLog["gift/\(n)"] == nil { coinLog["gift/\(n)"] = now }
         }
-        return receive(items, at: now)
+        return receive(item, at: now)
     }
 
-    /// Adds items to the wardrobe and notes the places, or the whole wardrobe, they complete.
-    private mutating func receive(_ items: [String], at now: Date) -> DecorGain {
-        for id in items where !owned.contains(id) {
-            owned.append(id)
-            fresh.insert(id)
+    /// Adds an item to the wardrobe and notes the place, or the whole wardrobe, it completes.
+    private mutating func receive(_ item: String, at now: Date) -> DecorGain {
+        if !owned.contains(item) {
+            owned.append(item)
+            fresh.insert(item)
         }
         lookChangedAt = now
         var slots: [DecorSlot] = []
-        for slot in DecorSlot.allCases where items.contains(where: { Decor.with(id: $0)?.slot == slot }) {
+        if let slot = Decor.with(id: item)?.slot {
             let all = Decor.of(slot)
-            guard all.allSatisfy({ owned.contains($0.id) }) else { continue }
             let key = "\(slot.rawValue):\(all.count)"
-            guard completions[key] == nil else { continue }
-            completions[key] = now
-            slots.append(slot)
+            if all.allSatisfy({ owned.contains($0.id) }), completions[key] == nil {
+                completions[key] = now
+                slots.append(slot)
+            }
         }
         var everything = false
-        if !items.isEmpty, allCollected {
+        if allCollected {
             let key = "all:\(Decor.all.count)"
             if completions[key] == nil {
                 completions[key] = now
                 everything = true
             }
         }
-        return DecorGain(items: items, completedSlots: slots, completedAll: everything)
+        return DecorGain(item: item, completedSlots: slots, completedAll: everything)
     }
 
     private static func id<R: RandomNumberGenerator>(using generator: inout R) -> String {

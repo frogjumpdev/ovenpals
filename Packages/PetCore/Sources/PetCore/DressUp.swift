@@ -100,7 +100,7 @@ public struct DressUp: Codable, Equatable, Sendable {
     /// Draws made with the old points, 5 each: what is owned that no turn of the capsule machine
     /// or wish coin brought (the welcome gift was free).
     public var draws: Int {
-        let fromMachine = Set(spins.values.flatMap(\.items)).union(wishes.values.map(\.item))
+        let fromMachine = Set(spins.values.map(\.item)).union(wishes.values.map(\.item))
         return Set(owned).subtracting(fromMachine)
             .filter { !(welcomeGiven && $0 == Decor.welcomeGift) }
             .count
