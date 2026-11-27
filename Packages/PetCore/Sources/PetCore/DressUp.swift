@@ -75,13 +75,35 @@ public struct DressUp: Codable, Equatable, Sendable {
     /// When an outfit or a new dot last changed; across iPhones the newer look wins.
     public var lookChangedAt: Date?
 
+    // The capsule machine (PRD v0.5 §5.4, 2026-11-27): the rules are in CapsuleMachine.swift.
+
+    /// Coins by "2026-11-27/workout" (day/source, or "gift/1"…"gift/5") → when each came in. The
+    /// days in `pointDays` are opened-the-app coins too: the old points become coins 1 for 1.
+    public var coinLog: [String: Date] = [:]
+    /// Every turn of the capsule machine, by its id. Three coins each.
+    public var spins: [String: MachineSpin] = [:]
+    /// Capsules out of the machine, waiting to be picked: their three coins are already spent.
+    public var offer: CapsuleOffer?
+    /// Wish coins: the disciplined week (its first day, "2026-11-23") → when the coin came in.
+    public var wishWeeks: [String: Date] = [:]
+    /// Wish coins used, by id.
+    public var wishes: [String: WishUse] = [:]
+    /// The last time Dress up was opened: coins that came in after it fly in, and light the dot.
+    public var lastVisit: Date?
+    /// A place, or the whole wardrobe, collected: "head:11", "all:51" (how many it had then) → when.
+    public var completions: [String: Date] = [:]
+
     public init() {}
 
     // MARK: - What there is
 
-    /// Draws made so far (the welcome gift was free).
+    /// Draws made with the old points, 5 each: what is owned that no turn of the capsule machine
+    /// or wish coin brought (the welcome gift was free).
     public var draws: Int {
-        max(0, owned.count - (welcomeGiven && owned.contains(Decor.welcomeGift) ? 1 : 0))
+        let fromMachine = Set(spins.values.flatMap(\.items)).union(wishes.values.map(\.item))
+        return Set(owned).subtracting(fromMachine)
+            .filter { !(welcomeGiven && $0 == Decor.welcomeGift) }
+            .count
     }
 
     public var points: Int { max(0, pointDays.count - Self.drawCost * draws) }
@@ -187,6 +209,7 @@ public struct DressUp: Codable, Equatable, Sendable {
         } else {
             fresh.formUnion(theirs.fresh.subtracting(ownedHere))
         }
+        mergeMachine(theirs)
     }
 
     // MARK: - Days
@@ -201,6 +224,7 @@ public struct DressUp: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case pointDays, owned, fresh, outfits, welcomeGiven, lookChangedAt
+        case coinLog, spins, offer, wishWeeks, wishes, lastVisit, completions
     }
 
     public init(from decoder: Decoder) throws {
@@ -211,5 +235,12 @@ public struct DressUp: Codable, Equatable, Sendable {
         outfits = try c.decodeIfPresent([String: [String]].self, forKey: .outfits) ?? [:]
         welcomeGiven = try c.decodeIfPresent(Bool.self, forKey: .welcomeGiven) ?? false
         lookChangedAt = try c.decodeIfPresent(Date.self, forKey: .lookChangedAt)
+        coinLog = try c.decodeIfPresent([String: Date].self, forKey: .coinLog) ?? [:]
+        spins = try c.decodeIfPresent([String: MachineSpin].self, forKey: .spins) ?? [:]
+        offer = try c.decodeIfPresent(CapsuleOffer.self, forKey: .offer)
+        wishWeeks = try c.decodeIfPresent([String: Date].self, forKey: .wishWeeks) ?? [:]
+        wishes = try c.decodeIfPresent([String: WishUse].self, forKey: .wishes) ?? [:]
+        lastVisit = try c.decodeIfPresent(Date.self, forKey: .lastVisit)
+        completions = try c.decodeIfPresent([String: Date].self, forKey: .completions) ?? [:]
     }
 }

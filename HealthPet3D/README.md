@@ -222,6 +222,23 @@ PRD v0.3 §10.3「已定、还没做」分四批做，这是第 1 批「只读�
   预置数据也写进 iCloud 键值存储：模拟器的 iCloud 值卸载重装也还在，不写的话启动时一合并又回到上次的衣柜。
   `tools/sim-shots.sh` 每次启动都带 `-hp3dDressUp ready`（不然新装的 App 每张主页截图都会弹欢迎礼物），第 7 组是 Dress up。
 
+### 扭蛋机的规则层（PRD v0.5 §5.4，2026-11-27；页面还没接）
+
+`Packages/PetCore/Sources/PetCore/CapsuleMachine.swift`（测试 `CapsuleMachineTests.swift`）。App 里跑的仍然是上面的旧抽奖，
+接页面时改用这里的接口，旧的 `collectPoint` / `draw` / `giveWelcome` 到时拿掉。
+
+- **硬币**：`earn(.opened / .workout / .rest / .night, on: 日子)`，一天三个位置各一枚（运动和红灯日休息共用一个位置），不过期、不设上限，
+  抽齐以后照攒。`CoinSource.forCredit` 把入账的泡泡换成硬币（月亮泡泡要准时或请假日才给）。老积分 1 比 1 算成硬币：
+  `pointDays` 里的每一天就是那天打开的那枚，旧抽奖按 5 分一次扣掉。和积分一样不存数字，存「哪天哪个位置」，两台 iPhone 合并不多算。
+- **转一次**：`spin()` 扣 3 枚，掉三颗还没有的（剩不到 3 件就 2 颗或 1 颗），存成 `offer`，离开再回来还是这三颗；`pick(i)` 开一颗，
+  另外两颗放回。金色：每次 1/6，连着 7 次能出却没出，第 8 次一定出；剩不到 4 件不出；金色里第二件尽量是别的位置。
+- **许愿币**：`earnWish(week:)` 每个自律周一枚，`useWish(on:)` 换任意一件还没有的。
+- **第一次进 Dress up**：`visit()` 送 3 枚，这一转只掉生日帽，开完再送 2 枚。已经拿过生日帽的老用户不走这一步。
+- **进场和小圆点**：`visit()` 返回上次进来之后新到的硬币（按到账顺序，带来源）和许愿币，然后记下这次进来的时间；
+  `dressUpDot` 是「有新硬币而且够转，或者许愿币到了，或者第一次的礼物还没拿」，全部抽齐不亮。`spinsLeft` 是 Spin again 旁边的次数。
+- **Diary**：`completions` 记下集齐一个位置（`head:11`）和全部集齐（`all:51`）的时间，带当时的件数，以后加了装饰还能再记一次。
+  Diary 页面还没接。
+
 ## 新表情（PRD §5.3、§10.3 第 17 项，2026-11-13）
 
 `PetWeb/src/engine.js`、`live.js` 换成 41 个表情的版本（原样复制自 `健康宠物/3D方案/expressions-v2/src/`，
